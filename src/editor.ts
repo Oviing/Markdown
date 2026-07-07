@@ -2,6 +2,7 @@ import { EditorView, keymap, placeholder, drawSelection, highlightSpecialChars }
 import { EditorState } from "@codemirror/state";
 import { history, defaultKeymap, historyKeymap } from "@codemirror/commands";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
+import { languages } from "@codemirror/language-data";
 import { syntaxHighlighting, HighlightStyle } from "@codemirror/language";
 import { tags as t } from "@lezer/highlight";
 
@@ -22,6 +23,14 @@ const mdHighlight = HighlightStyle.define([
   { tag: t.processingInstruction, color: "var(--muted)" },
   { tag: t.meta, color: "var(--muted)" },
   { tag: t.contentSeparator, color: "var(--muted)" },
+  { tag: t.keyword, color: "var(--syn-keyword)" },
+  { tag: [t.string, t.special(t.string), t.regexp], color: "var(--syn-string)" },
+  { tag: t.comment, color: "var(--syn-comment)", fontStyle: "italic" },
+  { tag: [t.number, t.bool, t.atom, t.null], color: "var(--syn-number)" },
+  { tag: [t.function(t.variableName), t.definition(t.variableName)], color: "var(--syn-func)" },
+  { tag: [t.typeName, t.className, t.tagName], color: "var(--syn-type)" },
+  { tag: [t.propertyName, t.attributeName], color: "var(--syn-prop)" },
+  { tag: [t.operator, t.punctuation], color: "var(--muted)" },
 ]);
 
 const theme = EditorView.theme({
@@ -63,7 +72,7 @@ export function createEditor(
         drawSelection(),
         highlightSpecialChars(),
         EditorView.lineWrapping,
-        markdown({ base: markdownLanguage }),
+        markdown({ base: markdownLanguage, codeLanguages: languages }),
         syntaxHighlighting(mdHighlight),
         theme,
         placeholder("Start writing…"),

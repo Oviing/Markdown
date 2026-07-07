@@ -10,6 +10,14 @@
   --selection: #d9e4f2;
   --border: #e8e5df;
   --code-bg: #f2f0eb;
+
+  --syn-keyword: #8a5fa8;
+  --syn-string: #5a7d4a;
+  --syn-comment: #a09d96;
+  --syn-number: #a85f5f;
+  --syn-func: #4a6fa5;
+  --syn-type: #7a5c3d;
+  --syn-prop: #5f7fa8;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -22,6 +30,14 @@
     --selection: #35404f;
     --border: #2c2d30;
     --code-bg: #26272a;
+
+    --syn-keyword: #b48ccf;
+    --syn-string: #93b57e;
+    --syn-comment: #6d6c68;
+    --syn-number: #cf8c8c;
+    --syn-func: #8fadd4;
+    --syn-type: #c4a583;
+    --syn-prop: #8ca6c9;
   }
 }
 
@@ -182,6 +198,51 @@ body.typing #toolbar:hover,
   padding: 0;
 }
 
+#preview .hljs-keyword,
+#preview .hljs-selector-tag,
+#preview .hljs-meta {
+  color: var(--syn-keyword);
+}
+
+#preview .hljs-string,
+#preview .hljs-regexp,
+#preview .hljs-addition {
+  color: var(--syn-string);
+}
+
+#preview .hljs-comment,
+#preview .hljs-quote {
+  color: var(--syn-comment);
+  font-style: italic;
+}
+
+#preview .hljs-number,
+#preview .hljs-literal,
+#preview .hljs-symbol {
+  color: var(--syn-number);
+}
+
+#preview .hljs-title,
+#preview .hljs-function,
+#preview .hljs-section {
+  color: var(--syn-func);
+}
+
+#preview .hljs-type,
+#preview .hljs-class,
+#preview .hljs-built_in,
+#preview .hljs-name {
+  color: var(--syn-type);
+}
+
+#preview .hljs-attr,
+#preview .hljs-attribute,
+#preview .hljs-property,
+#preview .hljs-variable,
+#preview .hljs-template-variable {
+  color: var(--syn-prop);
+}
+
 #preview blockquote {
   margin: 1em 0;
   padding: 0.1em 1.2em;
@@ -211,6 +272,25 @@ body.typing #toolbar:hover,
   max-width: 100%;
 }
 
+#terminal-panel {
+  flex: 0 0 auto;
+  height: 240px;
+  min-height: 0;
+  border-top: 1px solid var(--border);
+  background: var(--bg);
+  padding: 6px 10px 2px;
+}
+
+#terminal-panel[hidden] {
+  display: none;
+}
+
+#terminal,
+#terminal .xterm,
+#terminal .xterm-viewport {
+  height: 100%;
+}
+
 #status {
   display: flex;
   justify-content: space-between;
@@ -227,4 +307,30 @@ body.typing #toolbar:hover,
 
 #status:hover {
   opacity: 1;
+}
+
+#status-left {
+  display: flex;
+  gap: 1.2em;
+  min-width: 0;
+}
+
+#status-git[hidden] {
+  display: none;
+}
+
+#commit-input {
+  appearance: none;
+  background: none;
+  border: none;
+  outline: none;
+  font: inherit;
+  color: var(--fg);
+  padding: 0;
+  width: 26em;
+  max-width: 50vw;
+}
+
+#commit-input::placeholder {
+  color: var(--muted);
 }
