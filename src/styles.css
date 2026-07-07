@@ -1,0 +1,230 @@
+:root {
+  --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, monospace;
+
+  --bg: #fbfaf8;
+  --fg: #2b2a27;
+  --muted: #a09d96;
+  --accent: #4a6fa5;
+  --code: #7a5c3d;
+  --selection: #d9e4f2;
+  --border: #e8e5df;
+  --code-bg: #f2f0eb;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1d1e20;
+    --fg: #d6d4cf;
+    --muted: #6d6c68;
+    --accent: #8fadd4;
+    --code: #c4a583;
+    --selection: #35404f;
+    --border: #2c2d30;
+    --code-bg: #26272a;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  font-family: var(--sans);
+  background: var(--bg);
+  color: var(--fg);
+  display: flex;
+  flex-direction: column;
+}
+
+#toolbar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0.3rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+  transition: opacity 0.3s ease;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+body.typing #toolbar {
+  opacity: 0.45;
+}
+
+body.typing #toolbar:hover,
+#toolbar:hover {
+  opacity: 1;
+}
+
+#toolbar button {
+  appearance: none;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  width: 30px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  color: var(--muted);
+  cursor: default;
+}
+
+#toolbar button:hover {
+  background: var(--code-bg);
+  color: var(--fg);
+}
+
+#toolbar button[aria-pressed="true"] {
+  background: var(--code-bg);
+  color: var(--accent);
+}
+
+#toolbar svg {
+  width: 16px;
+  height: 16px;
+}
+
+#toolbar .spacer {
+  flex: 1;
+}
+
+#toolbar .divider {
+  width: 1px;
+  height: 18px;
+  background: var(--border);
+  margin: 0 6px;
+}
+
+#app {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+
+#editor {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+}
+
+#editor .cm-editor {
+  height: 100%;
+}
+
+#preview {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  border-left: 1px solid var(--border);
+  padding: 3.5rem 2.5rem 40vh;
+  font-size: 16px;
+  line-height: 1.7;
+}
+
+#preview[hidden] {
+  display: none;
+}
+
+#preview > :first-child {
+  margin-top: 0;
+}
+
+#preview h1,
+#preview h2,
+#preview h3,
+#preview h4 {
+  line-height: 1.3;
+  margin: 1.6em 0 0.5em;
+}
+
+#preview h1 {
+  font-size: 1.6em;
+}
+
+#preview h2 {
+  font-size: 1.35em;
+}
+
+#preview h3 {
+  font-size: 1.15em;
+}
+
+#preview a {
+  color: var(--accent);
+}
+
+#preview code {
+  font-family: var(--mono);
+  font-size: 0.88em;
+  background: var(--code-bg);
+  padding: 0.1em 0.35em;
+  border-radius: 4px;
+}
+
+#preview pre {
+  background: var(--code-bg);
+  padding: 0.9em 1.1em;
+  border-radius: 8px;
+  overflow-x: auto;
+}
+
+#preview pre code {
+  background: none;
+  padding: 0;
+}
+
+#preview blockquote {
+  margin: 1em 0;
+  padding: 0.1em 1.2em;
+  border-left: 3px solid var(--border);
+  color: var(--muted);
+}
+
+#preview table {
+  border-collapse: collapse;
+  margin: 1em 0;
+}
+
+#preview th,
+#preview td {
+  border: 1px solid var(--border);
+  padding: 0.4em 0.8em;
+  text-align: left;
+}
+
+#preview hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 2em 0;
+}
+
+#preview img {
+  max-width: 100%;
+}
+
+#status {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.35rem 1rem;
+  font-size: 12px;
+  color: var(--muted);
+  border-top: 1px solid var(--border);
+  opacity: 0.5;
+  transition: opacity 0.25s ease;
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: default;
+}
+
+#status:hover {
+  opacity: 1;
+}

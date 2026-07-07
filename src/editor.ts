@@ -1,0 +1,88 @@
+import { EditorView, keymap, placeholder, drawSelection, highlightSpecialChars } from "@codemirror/view";
+import { EditorState } from "@codemirror/state";
+import { history, defaultKeymap, historyKeymap } from "@codemirror/commands";
+import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
+import { syntaxHighlighting, HighlightStyle } from "@codemirror/language";
+import { tags as t } from "@lezer/highlight";
+
+const mdHighlight = HighlightStyle.define([
+  { tag: t.heading1, fontSize: "1.5em", fontWeight: "700" },
+  { tag: t.heading2, fontSize: "1.3em", fontWeight: "700" },
+  { tag: t.heading3, fontSize: "1.15em", fontWeight: "600" },
+  { tag: t.heading4, fontWeight: "600" },
+  { tag: t.heading5, fontWeight: "600" },
+  { tag: t.heading6, fontWeight: "600" },
+  { tag: t.strong, fontWeight: "700" },
+  { tag: t.emphasis, fontStyle: "italic" },
+  { tag: t.strikethrough, textDecoration: "line-through" },
+  { tag: t.monospace, fontFamily: "var(--mono)", fontSize: "0.88em", color: "var(--code)" },
+  { tag: t.link, color: "var(--accent)" },
+  { tag: t.url, color: "var(--muted)" },
+  { tag: t.quote, color: "var(--muted)", fontStyle: "italic" },
+  { tag: t.processingInstruction, color: "var(--muted)" },
+  { tag: t.meta, color: "var(--muted)" },
+  { tag: t.contentSeparator, color: "var(--muted)" },
+]);
+
+const theme = EditorView.theme({
+  "&": {
+    height: "100%",
+    fontSize: "17px",
+    backgroundColor: "transparent",
+    color: "var(--fg)",
+  },
+  "&.cm-focused": { outline: "none" },
+  ".cm-scroller": {
+    fontFamily: "var(--sans)",
+    lineHeight: "1.7",
+  },
+  ".cm-content": {
+    maxWidth: "46rem",
+    margin: "0 auto",
+    padding: "3.5rem 2.5rem 40vh",
+    caretColor: "var(--fg)",
+  },
+  ".cm-line": { padding: "0" },
+  ".cm-cursor": { borderLeftColor: "var(--fg)", borderLeftWidth: "2px" },
+  ".cm-selectionBackground, &.cm-focused .cm-selectionBackground": {
+    backgroundColor: "var(--selection) !important",
+  },
+  ".cm-placeholder": { color: "var(--muted)" },
+});
+
+export function createEditor(
+  parent: HTMLElement,
+  onChange: (text: string) => void
+): EditorView {
+  const view = new EditorView({
+    parent,
+    state: EditorState.create({
+      doc: "",
+      extensions: [
+        history(),
+        drawSelection(),
+        highlightSpecialChars(),
+        EditorView.lineWrapping,
+        markdown({ base: markdownLanguage }),
+        syntaxHighlighting(mdHighlight),
+        theme,
+        placeholder("Start writing…"),
+        keymap.of([...defaultKeymap, ...historyKeymap]),
+        EditorView.updateListener.of((update) => {
+          if (update.docChanged) onChange(update.state.doc.toString());
+        }),
+      ],
+    }),
+  });
+  return view;
+}
+
+export function getText(view: EditorView): string {
+  return view.state.doc.toString();
+}
+
+export function setText(view: EditorView, text: string): void {
+  view.dispatch({
+    changes: { from: 0, to: view.state.doc.length, insert: text },
+  });
+}
