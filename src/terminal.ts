@@ -22,6 +22,10 @@ function themeFromCss(): Record<string, string> {
   };
 }
 
+export function refreshTerminalTheme(): void {
+  if (term) term.options.theme = themeFromCss();
+}
+
 function fitAndResize(): void {
   if (!term || !fitAddon || terminalPanelEl.hidden) return;
   fitAddon.fit();

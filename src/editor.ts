@@ -1,10 +1,11 @@
 import { EditorView, keymap, placeholder, drawSelection, highlightSpecialChars } from "@codemirror/view";
-import { EditorState } from "@codemirror/state";
+import { EditorState, Compartment } from "@codemirror/state";
 import { history, defaultKeymap, historyKeymap } from "@codemirror/commands";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { languages } from "@codemirror/language-data";
-import { syntaxHighlighting, HighlightStyle } from "@codemirror/language";
+import { syntaxHighlighting, HighlightStyle, LanguageDescription } from "@codemirror/language";
 import { tags as t } from "@lezer/highlight";
+import { isMarkdownFile } from "./filetype";
 
 const mdHighlight = HighlightStyle.define([
   { tag: t.heading1, fontSize: "1.5em", fontWeight: "700" },
@@ -59,6 +60,28 @@ const theme = EditorView.theme({
   ".cm-placeholder": { color: "var(--muted)" },
 });
 
+const langCompartment = new Compartment();
+
+function markdownExt() {
+  return markdown({ base: markdownLanguage, codeLanguages: languages });
+}
+
+let langToken = 0;
+
+// swap the editor language to match the file; last-requested wins if loads overlap
+export async function setLanguageFor(view: EditorView, fileName: string | null): Promise<void> {
+  const token = ++langToken;
+  let lang;
+  if (isMarkdownFile(fileName)) {
+    lang = markdownExt();
+  } else {
+    const desc = LanguageDescription.matchFilename(languages, fileName!);
+    lang = desc ? await desc.load() : [];
+  }
+  if (token !== langToken) return;
+  view.dispatch({ effects: langCompartment.reconfigure(lang) });
+}
+
 export function createEditor(
   parent: HTMLElement,
   onChange: (text: string) => void
@@ -72,7 +95,7 @@ export function createEditor(
         drawSelection(),
         highlightSpecialChars(),
         EditorView.lineWrapping,
-        markdown({ base: markdownLanguage, codeLanguages: languages }),
+        langCompartment.of(markdownExt()),
         syntaxHighlighting(mdHighlight),
         theme,
         placeholder("Start writing…"),

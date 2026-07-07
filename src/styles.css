@@ -21,7 +21,7 @@
 }
 
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme]) {
     --bg: #1d1e20;
     --fg: #d6d4cf;
     --muted: #6d6c68;
@@ -39,6 +39,66 @@
     --syn-type: #c4a583;
     --syn-prop: #8ca6c9;
   }
+}
+
+/* explicit themes — "auto" is the absence of data-theme; "light" is the :root default */
+
+:root[data-theme="dark"] {
+  /* keep in sync with the prefers-color-scheme block above */
+  --bg: #1d1e20;
+  --fg: #d6d4cf;
+  --muted: #6d6c68;
+  --accent: #8fadd4;
+  --code: #c4a583;
+  --selection: #35404f;
+  --border: #2c2d30;
+  --code-bg: #26272a;
+
+  --syn-keyword: #b48ccf;
+  --syn-string: #93b57e;
+  --syn-comment: #6d6c68;
+  --syn-number: #cf8c8c;
+  --syn-func: #8fadd4;
+  --syn-type: #c4a583;
+  --syn-prop: #8ca6c9;
+}
+
+:root[data-theme="grey"] {
+  --bg: #2b2d2f;
+  --fg: #d3d5d7;
+  --muted: #85888b;
+  --accent: #9fb0c0;
+  --code: #b5ab9d;
+  --selection: #40454a;
+  --border: #3a3d40;
+  --code-bg: #333537;
+
+  --syn-keyword: #b3a3c4;
+  --syn-string: #a3b596;
+  --syn-comment: #85888b;
+  --syn-number: #c4a0a0;
+  --syn-func: #9ab0c4;
+  --syn-type: #b5ab9d;
+  --syn-prop: #a4aebb;
+}
+
+:root[data-theme="ocean"] {
+  --bg: #0f1d24;
+  --fg: #cfe0e4;
+  --muted: #628490;
+  --accent: #5fb8c4;
+  --code: #8fd0bd;
+  --selection: #1e3a46;
+  --border: #1d323c;
+  --code-bg: #142731;
+
+  --syn-keyword: #b195d8;
+  --syn-string: #7fbf9a;
+  --syn-comment: #628490;
+  --syn-number: #d99e8c;
+  --syn-func: #6cb6d6;
+  --syn-type: #6cc0ae;
+  --syn-prop: #82aec9;
 }
 
 * {
@@ -99,6 +159,11 @@ body.typing #toolbar:hover,
   color: var(--fg);
 }
 
+#toolbar button:disabled {
+  opacity: 0.35;
+  pointer-events: none;
+}
+
 #toolbar button[aria-pressed="true"] {
   background: var(--code-bg);
   color: var(--accent);
@@ -124,6 +189,88 @@ body.typing #toolbar:hover,
   flex: 1;
   display: flex;
   min-height: 0;
+}
+
+#sidebar {
+  flex: 0 0 240px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--border);
+  font-family: var(--sans);
+  font-size: 12.5px;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+#sidebar[hidden] {
+  display: none;
+}
+
+#sidebar-header {
+  padding: 6px 10px;
+  font-weight: 600;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: default;
+}
+
+#sidebar-header:hover {
+  color: var(--fg);
+}
+
+#file-tree {
+  flex: 1;
+  overflow-y: auto;
+  padding-bottom: 1rem;
+}
+
+.tree-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--fg);
+  cursor: default;
+}
+
+.tree-row:hover {
+  background: var(--code-bg);
+}
+
+.tree-row.active {
+  background: var(--code-bg);
+  color: var(--accent);
+}
+
+.tree-row.dim {
+  color: var(--muted);
+}
+
+.tree-row svg {
+  width: 12px;
+  height: 12px;
+  flex: none;
+  color: var(--muted);
+  transition: transform 0.1s;
+}
+
+.tree-row.open svg {
+  transform: rotate(90deg);
+}
+
+#file-tree .empty {
+  padding: 10px;
+  color: var(--muted);
+}
+
+#file-tree .empty:hover {
+  color: var(--accent);
 }
 
 #editor {

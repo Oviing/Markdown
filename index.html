@@ -2,6 +2,11 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <script>
+      // pre-paint the saved theme before the stylesheet applies (main.ts is deferred)
+      var t = localStorage.getItem("theme");
+      if (t && t !== "auto") document.documentElement.dataset.theme = t;
+    </script>
     <link rel="stylesheet" href="/src/styles.css" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Untitled</title>
@@ -55,14 +60,24 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><path d="M12 18v-6"/><path d="m9 15 3 3 3-3"/></svg>
       </button>
       <span class="divider"></span>
+      <button data-action="explorer" title="Toggle explorer ⌘⇧E" aria-label="Toggle explorer" aria-pressed="false">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>
+      </button>
       <button data-action="preview" title="Toggle preview ⌘/" aria-label="Toggle preview" aria-pressed="false">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
       </button>
       <button data-action="terminal" title="Toggle terminal ⌘J" aria-label="Toggle terminal" aria-pressed="false">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
       </button>
+      <button data-action="theme" title="Theme: auto ⌘⇧T" aria-label="Cycle theme">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 0 0 18z" fill="currentColor" stroke="none"/></svg>
+      </button>
     </header>
     <main id="app">
+      <nav id="sidebar" hidden>
+        <div id="sidebar-header" title="">Open Folder…</div>
+        <div id="file-tree"></div>
+      </nav>
       <div id="editor"></div>
       <div id="preview" hidden></div>
     </main>

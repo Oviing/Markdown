@@ -1,8 +1,9 @@
 import { confirm } from "@tauri-apps/plugin-dialog";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { createEditor, getText, setText } from "./editor";
+import { createEditor, getText, setText, setLanguageFor } from "./editor";
 import { renderPreview } from "./preview";
-import { openMarkdownFile, saveMarkdown, saveMarkdownAs, saveDocxAs } from "./file";
+import { openMarkdownFile, readMarkdownFile, saveMarkdown, saveTextAs, saveDocxAs } from "./file";
+import { isMarkdownFile } from "./filetype";
 import { markdownToDocx } from "./export-docx";
 import {
   cycleHeading,
@@ -14,7 +15,16 @@ import {
 } from "./format";
 import { formatDocument } from "./prettify";
 import { gitStatus, gitCommit, gitPush } from "./git";
-import { toggleTerminal, terminalPanelEl } from "./terminal";
+import { toggleTerminal, terminalPanelEl, refreshTerminalTheme } from "./terminal";
+import { initTheme, cycleTheme } from "./theme";
+import {
+  initExplorer,
+  toggleExplorer,
+  chooseRootFolder,
+  markActive,
+  refreshExplorer,
+  sidebarEl,
+} from "./explorer";
 
 const appWindow = getCurrentWindow();
 const previewEl = document.querySelector<HTMLElement>("#preview")!;
@@ -29,6 +39,8 @@ let previewTimer: ReturnType<typeof setTimeout> | undefined;
 const toolbarEl = document.querySelector<HTMLElement>("#toolbar")!;
 const previewBtn = toolbarEl.querySelector<HTMLButtonElement>('[data-action="preview"]')!;
 const terminalBtn = toolbarEl.querySelector<HTMLButtonElement>('[data-action="terminal"]')!;
+const themeBtn = toolbarEl.querySelector<HTMLButtonElement>('[data-action="theme"]')!;
+const explorerBtn = toolbarEl.querySelector<HTMLButtonElement>('[data-action="explorer"]')!;
 
 const editor = createEditor(document.querySelector<HTMLElement>("#editor")!, (text) => {
   document.body.classList.add("typing");
@@ -42,11 +54,28 @@ function fileName(): string {
 }
 
 function baseName(): string {
-  return fileName().replace(/\.(md|markdown|txt)$/i, "");
+  return fileName().replace(/\.[^./]+$/, "");
 }
 
 function isDirty(): boolean {
   return getText(editor) !== savedText;
+}
+
+function docIsMarkdown(): boolean {
+  return isMarkdownFile(currentPath && fileName());
+}
+
+// buttons that insert markdown syntax or only make sense for markdown documents
+const MD_ONLY_ACTIONS = ["bold", "italic", "strike", "heading", "ul", "ol", "quote", "code", "link", "export", "preview"];
+const mdOnlyBtns = MD_ONLY_ACTIONS.map(
+  (a) => toolbarEl.querySelector<HTMLButtonElement>(`[data-action="${a}"]`)!
+);
+
+function applyDocMode(): void {
+  const md = docIsMarkdown();
+  for (const b of mdOnlyBtns) b.disabled = !md;
+  if (!md && !previewEl.hidden) togglePreview();
+  void setLanguageFor(editor, currentPath ? fileName() : null);
 }
 
 function updateStatus(text: string): void {
@@ -64,6 +93,7 @@ function schedulePreview(text: string): void {
 }
 
 function togglePreview(): void {
+  if (previewEl.hidden && !docIsMarkdown()) return; // can always close, never open for code
   previewEl.hidden = !previewEl.hidden;
   previewBtn.setAttribute("aria-pressed", String(!previewEl.hidden));
   if (!previewEl.hidden) renderPreview(previewEl, getText(editor));
@@ -158,6 +188,36 @@ async function toggleTerminalPanel(): Promise<void> {
   if (!opened) editor.focus();
 }
 
+let themeFlashTimer: ReturnType<typeof setTimeout> | undefined;
+
+function cycleAppTheme(): void {
+  const t = cycleTheme();
+  refreshTerminalTheme();
+  themeBtn.title = `Theme: ${t} ⌘⇧T`;
+  clearTimeout(themeFlashTimer);
+  statusWordsEl.textContent = `theme: ${t}`;
+  themeFlashTimer = setTimeout(() => updateStatus(getText(editor)), 1500);
+}
+
+let formatFlashTimer: ReturnType<typeof setTimeout> | undefined;
+
+async function runFormat(): Promise<void> {
+  if (await formatDocument(editor, currentPath ? fileName() : null)) return;
+  clearTimeout(formatFlashTimer);
+  const n = fileName();
+  const dot = n.lastIndexOf(".");
+  statusWordsEl.textContent = `no formatter for ${dot > 0 ? n.slice(dot) : n}`;
+  formatFlashTimer = setTimeout(() => updateStatus(getText(editor)), 1500);
+}
+
+function toggleExplorerPanel(): void {
+  explorerBtn.setAttribute("aria-pressed", String(toggleExplorer()));
+}
+
+async function openFolder(): Promise<void> {
+  if ((await chooseRootFolder()) && sidebarEl.hidden) toggleExplorerPanel();
+}
+
 async function confirmDiscard(): Promise<boolean> {
   if (!isDirty()) return true;
   return confirm("You have unsaved changes. Discard them?", {
@@ -175,20 +235,34 @@ async function newDocument(): Promise<void> {
   setText(editor, "");
   updateStatus("");
   void refreshGit();
+  markActive(null);
+  applyDocMode();
+  editor.focus();
+}
+
+function loadDocument(path: string, text: string): void {
+  currentPath = path;
+  savedText = text;
+  setText(editor, text);
+  updateStatus(text);
+  void refreshGit();
+  markActive(path);
+  applyDocMode();
+  if (!previewEl.hidden) renderPreview(previewEl, text);
   editor.focus();
 }
 
 async function openDocument(): Promise<void> {
   if (!(await confirmDiscard())) return;
   const result = await openMarkdownFile();
-  if (!result) return;
-  currentPath = result.path;
-  savedText = result.text;
-  setText(editor, result.text);
-  updateStatus(result.text);
-  void refreshGit();
-  if (!previewEl.hidden) renderPreview(previewEl, result.text);
-  editor.focus();
+  if (result) loadDocument(result.path, result.text);
+}
+
+async function openDocumentAtPath(path: string): Promise<void> {
+  if (path === currentPath) return;
+  if (!(await confirmDiscard())) return;
+  const text = await readMarkdownFile(path);
+  if (text !== null) loadDocument(path, text);
 }
 
 async function saveDocument(forceDialog = false): Promise<void> {
@@ -196,9 +270,10 @@ async function saveDocument(forceDialog = false): Promise<void> {
   if (currentPath && !forceDialog) {
     await saveMarkdown(currentPath, text);
   } else {
-    const path = await saveMarkdownAs(text, `${baseName()}.md`);
+    const path = await saveTextAs(text, docIsMarkdown() ? `${baseName()}.md` : fileName());
     if (!path) return;
     currentPath = path;
+    markActive(path);
   }
   savedText = text;
   updateStatus(text);
@@ -206,6 +281,7 @@ async function saveDocument(forceDialog = false): Promise<void> {
 }
 
 async function exportDocx(): Promise<void> {
+  if (!docIsMarkdown()) return;
   const bytes = await markdownToDocx(getText(editor));
   await saveDocxAs(bytes, `${baseName()}.docx`);
 }
@@ -220,18 +296,20 @@ const toolbarActions: Record<string, () => void> = {
   quote: () => toggleLinePrefix(editor, "> "),
   code: () => toggleCode(editor),
   link: () => insertLink(editor),
-  format: () => void formatDocument(editor),
+  format: () => void runFormat(),
   new: () => void newDocument(),
   open: () => void openDocument(),
   save: () => void saveDocument(),
   export: () => void exportDocx(),
   preview: () => togglePreview(),
   terminal: () => void toggleTerminalPanel(),
+  theme: () => cycleAppTheme(),
+  explorer: () => toggleExplorerPanel(),
 };
 
 toolbarEl.addEventListener("mousedown", (e) => {
   const btn = (e.target as HTMLElement).closest<HTMLButtonElement>("button[data-action]");
-  if (!btn) return;
+  if (!btn || btn.disabled) return;
   e.preventDefault();
   toolbarActions[btn.dataset.action!]?.();
 });
@@ -262,13 +340,16 @@ window.addEventListener(
     else if (key === "s") void saveDocument(e.shiftKey);
     else if (key === "e" && !e.shiftKey) void exportDocx();
     else if (key === "/") togglePreview();
-    else if (key === "b" && !e.shiftKey) toggleInline(editor, "**");
-    else if (key === "i" && !e.shiftKey) toggleInline(editor, "*");
-    else if (key === "k" && !e.shiftKey) insertLink(editor);
-    else if (key === "f" && e.shiftKey) void formatDocument(editor);
+    else if (key === "b" && !e.shiftKey) { if (docIsMarkdown()) toggleInline(editor, "**"); }
+    else if (key === "i" && !e.shiftKey) { if (docIsMarkdown()) toggleInline(editor, "*"); }
+    else if (key === "k" && !e.shiftKey) { if (docIsMarkdown()) insertLink(editor); }
+    else if (key === "f" && e.shiftKey) void runFormat();
     else if (key === "j" && !e.shiftKey) void toggleTerminalPanel();
     else if (key === "c" && e.shiftKey) beginCommit();
     else if (key === "p" && e.shiftKey) void pushRepo();
+    else if (key === "t" && e.shiftKey) cycleAppTheme();
+    else if (key === "e" && e.shiftKey) toggleExplorerPanel();
+    else if (key === "o" && e.shiftKey) void openFolder();
     else handled = false;
     if (handled) {
       e.preventDefault();
@@ -283,12 +364,17 @@ statusGitEl.addEventListener("click", () => beginCommit());
 let gitFocusTimer: ReturnType<typeof setTimeout> | undefined;
 window.addEventListener("focus", () => {
   clearTimeout(gitFocusTimer);
-  gitFocusTimer = setTimeout(() => void refreshGit(), 300);
+  gitFocusTimer = setTimeout(() => {
+    void refreshGit();
+    refreshExplorer();
+  }, 300);
 });
 
 void appWindow.onCloseRequested(async (event) => {
   if (!(await confirmDiscard())) event.preventDefault();
 });
 
+initExplorer({ onOpenFile: (p) => void openDocumentAtPath(p), getFallbackRoot: repoDir });
+themeBtn.title = `Theme: ${initTheme()} ⌘⇧T`;
 updateStatus("");
 editor.focus();

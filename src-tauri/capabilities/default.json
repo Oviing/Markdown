@@ -11,6 +11,7 @@
     "fs:allow-read-text-file",
     "fs:allow-write-text-file",
     "fs:allow-write-file",
+    "fs:allow-read-dir",
     {
       "identifier": "fs:scope",
       "allow": [{ "path": "$HOME/**" }, { "path": "/Volumes/**" }, { "path": "/tmp/**" }]
