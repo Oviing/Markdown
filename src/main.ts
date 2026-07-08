@@ -1,8 +1,8 @@
 import { confirm } from "@tauri-apps/plugin-dialog";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { createEditor, getText, setText, setLanguageFor } from "./editor";
-import { renderPreview } from "./preview";
-import { openMarkdownFile, readMarkdownFile, saveMarkdown, saveTextAs, saveDocxAs } from "./file";
+import { createEditor, getText, setText, setLanguageFor, toggleFocusMode } from "./editor";
+import { renderPreview, renderDiff, refreshPreviewTheme } from "./preview";
+import { openMarkdownFile, readMarkdownFile, readBinaryFile, saveMarkdown, saveTextAs, saveDocxAs, statMtime } from "./file";
 import { isMarkdownFile } from "./filetype";
 import { markdownToDocx } from "./export-docx";
 import {
@@ -14,9 +14,13 @@ import {
   toggleOrderedList,
 } from "./format";
 import { formatDocument } from "./prettify";
-import { gitStatus, gitCommit, gitPush } from "./git";
+import { gitStatus, gitCommit, gitPush, gitBranches, gitCheckout, gitDiff } from "./git";
 import { toggleTerminal, terminalPanelEl, refreshTerminalTheme } from "./terminal";
-import { initTheme, cycleTheme } from "./theme";
+import { initTheme, cycleTheme, currentTheme, setTheme, THEMES, type Theme } from "./theme";
+import { initSyncScroll, pushEditorScroll } from "./syncscroll";
+import { initPalette, openPalette, type PaletteItem } from "./palette";
+import { openSearchPanel } from "@codemirror/search";
+import { EditorView } from "@codemirror/view";
 import {
   initExplorer,
   toggleExplorer,
@@ -34,6 +38,7 @@ const statusGitEl = document.querySelector<HTMLElement>("#status-git")!;
 
 let currentPath: string | null = null;
 let savedText = "";
+let lastMtime: number | null = null;
 let previewTimer: ReturnType<typeof setTimeout> | undefined;
 
 const toolbarEl = document.querySelector<HTMLElement>("#toolbar")!;
@@ -89,14 +94,20 @@ function updateStatus(text: string): void {
 function schedulePreview(text: string): void {
   if (previewEl.hidden) return;
   clearTimeout(previewTimer);
-  previewTimer = setTimeout(() => renderPreview(previewEl, text), 150);
+  previewTimer = setTimeout(() => {
+    renderPreview(previewEl, text);
+    pushEditorScroll(editor, previewEl);
+  }, 150);
 }
 
 function togglePreview(): void {
   if (previewEl.hidden && !docIsMarkdown()) return; // can always close, never open for code
   previewEl.hidden = !previewEl.hidden;
   previewBtn.setAttribute("aria-pressed", String(!previewEl.hidden));
-  if (!previewEl.hidden) renderPreview(previewEl, getText(editor));
+  if (!previewEl.hidden) {
+    renderPreview(previewEl, getText(editor));
+    pushEditorScroll(editor, previewEl);
+  }
   editor.focus();
 }
 
@@ -188,30 +199,41 @@ async function toggleTerminalPanel(): Promise<void> {
   if (!opened) editor.focus();
 }
 
-let themeFlashTimer: ReturnType<typeof setTimeout> | undefined;
+let statusFlashTimer: ReturnType<typeof setTimeout> | undefined;
 
-function cycleAppTheme(): void {
-  const t = cycleTheme();
-  refreshTerminalTheme();
-  themeBtn.title = `Theme: ${t} ⌘⇧T`;
-  clearTimeout(themeFlashTimer);
-  statusWordsEl.textContent = `theme: ${t}`;
-  themeFlashTimer = setTimeout(() => updateStatus(getText(editor)), 1500);
+// transient message in the word-count slot, restored after a beat
+function flashStatus(msg: string): void {
+  clearTimeout(statusFlashTimer);
+  statusWordsEl.textContent = msg;
+  statusFlashTimer = setTimeout(() => updateStatus(getText(editor)), 1500);
 }
 
-let formatFlashTimer: ReturnType<typeof setTimeout> | undefined;
+function applyAppTheme(t: Theme): void {
+  setTheme(t);
+  refreshTerminalTheme();
+  refreshPreviewTheme(previewEl, getText(editor));
+  themeBtn.title = `Theme: ${t} ⌘⇧T`;
+  flashStatus(`theme: ${t}`);
+}
+
+function cycleAppTheme(): void {
+  applyAppTheme(cycleTheme());
+}
 
 async function runFormat(): Promise<void> {
   if (await formatDocument(editor, currentPath ? fileName() : null)) return;
-  clearTimeout(formatFlashTimer);
   const n = fileName();
   const dot = n.lastIndexOf(".");
-  statusWordsEl.textContent = `no formatter for ${dot > 0 ? n.slice(dot) : n}`;
-  formatFlashTimer = setTimeout(() => updateStatus(getText(editor)), 1500);
+  flashStatus(`no formatter for ${dot > 0 ? n.slice(dot) : n}`);
 }
 
 function toggleExplorerPanel(): void {
   explorerBtn.setAttribute("aria-pressed", String(toggleExplorer()));
+}
+
+function toggleAppFocusMode(): void {
+  flashStatus(`focus mode ${toggleFocusMode(editor) ? "on" : "off"}`);
+  editor.focus();
 }
 
 async function openFolder(): Promise<void> {
@@ -232,6 +254,7 @@ async function newDocument(): Promise<void> {
   if (!(await confirmDiscard())) return;
   currentPath = null;
   savedText = "";
+  lastMtime = null;
   setText(editor, "");
   updateStatus("");
   void refreshGit();
@@ -240,9 +263,30 @@ async function newDocument(): Promise<void> {
   editor.focus();
 }
 
+const RECENT_KEY = "recent-files";
+
+function recentFiles(): string[] {
+  try {
+    const list: unknown = JSON.parse(localStorage.getItem(RECENT_KEY) ?? "[]");
+    return Array.isArray(list) ? list.filter((p): p is string => typeof p === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+function rememberRecent(path: string): void {
+  const list = [path, ...recentFiles().filter((p) => p !== path)].slice(0, 10);
+  localStorage.setItem(RECENT_KEY, JSON.stringify(list));
+}
+
 function loadDocument(path: string, text: string): void {
   currentPath = path;
   savedText = text;
+  lastMtime = null;
+  void statMtime(path).then((m) => {
+    if (currentPath === path) lastMtime = m;
+  });
+  rememberRecent(path);
   setText(editor, text);
   updateStatus(text);
   void refreshGit();
@@ -268,22 +312,252 @@ async function openDocumentAtPath(path: string): Promise<void> {
 async function saveDocument(forceDialog = false): Promise<void> {
   const text = getText(editor);
   if (currentPath && !forceDialog) {
+    // don't silently clobber an external edit
+    const diskMtime = await statMtime(currentPath);
+    if (diskMtime !== null && lastMtime !== null && diskMtime > lastMtime) {
+      const overwrite = await confirm("This file changed on disk since you opened it. Overwrite?", {
+        title: "File Changed on Disk",
+        kind: "warning",
+        okLabel: "Overwrite",
+        cancelLabel: "Cancel",
+      });
+      if (!overwrite) return;
+    }
     await saveMarkdown(currentPath, text);
   } else {
     const path = await saveTextAs(text, docIsMarkdown() ? `${baseName()}.md` : fileName());
     if (!path) return;
     currentPath = path;
     markActive(path);
+    rememberRecent(path);
   }
   savedText = text;
+  lastMtime = await statMtime(currentPath);
+  localStorage.removeItem(RECOVERY_KEY);
   updateStatus(text);
   void refreshGit();
 }
 
+// crash recovery: a dirty buffer is snapshotted so an unclean exit loses nothing
+const RECOVERY_KEY = "recovery";
+
+interface RecoverySlot {
+  path: string | null;
+  text: string;
+  ts: number;
+}
+
+function writeRecovery(): void {
+  try {
+    if (isDirty()) {
+      const slot: RecoverySlot = { path: currentPath, text: getText(editor), ts: Date.now() };
+      localStorage.setItem(RECOVERY_KEY, JSON.stringify(slot));
+    } else {
+      localStorage.removeItem(RECOVERY_KEY);
+    }
+  } catch {
+    // quota exceeded on a huge doc — recovery is best-effort
+  }
+}
+
+async function offerRecovery(): Promise<void> {
+  const raw = localStorage.getItem(RECOVERY_KEY);
+  if (!raw) return;
+  localStorage.removeItem(RECOVERY_KEY);
+  let slot: RecoverySlot;
+  try {
+    slot = JSON.parse(raw) as RecoverySlot;
+  } catch {
+    return;
+  }
+  if (typeof slot?.text !== "string") return;
+  const name = slot.path ? (slot.path.split("/").pop() ?? "Untitled") : "Untitled";
+  const restore = await confirm(`Restore unsaved changes to “${name}” from your last session?`, {
+    title: "Restore Unsaved Changes",
+    kind: "info",
+    okLabel: "Restore",
+    cancelLabel: "Discard",
+  });
+  if (!restore) return;
+  if (slot.path) {
+    const disk = await readMarkdownFile(slot.path);
+    if (disk !== null) {
+      loadDocument(slot.path, disk); // savedText = disk state, so the dirty dot is truthful
+      if (disk !== slot.text) setText(editor, slot.text);
+      return;
+    }
+  }
+  setText(editor, slot.text);
+}
+
+async function reloadFromDisk(): Promise<boolean> {
+  if (!currentPath) return false;
+  const text = await readMarkdownFile(currentPath);
+  if (text === null) return false;
+  loadDocument(currentPath, text);
+  return true;
+}
+
+// focus-time check: someone may have edited the file outside Spark
+async function checkExternalChange(): Promise<void> {
+  if (!currentPath || lastMtime === null) return;
+  const diskMtime = await statMtime(currentPath);
+  if (diskMtime === null || diskMtime <= lastMtime) return;
+  if (isDirty()) {
+    flashStatus("file changed on disk — save will ask to overwrite");
+  } else if (await reloadFromDisk()) {
+    flashStatus("reloaded from disk");
+  }
+}
+
+// local images only: relative paths resolve against the document's directory;
+// remote URLs keep the alt-text fallback (data: URLs are handled by the exporter)
+function resolveDocImage(href: string): Promise<Uint8Array | null> {
+  if (/^[a-z][a-z0-9+.-]*:/i.test(href)) return Promise.resolve(null);
+  if (href.startsWith("/")) return readBinaryFile(href);
+  const dir = repoDir();
+  return dir ? readBinaryFile(`${dir}/${href}`) : Promise.resolve(null);
+}
+
 async function exportDocx(): Promise<void> {
   if (!docIsMarkdown()) return;
-  const bytes = await markdownToDocx(getText(editor));
+  const bytes = await markdownToDocx(getText(editor), { resolveImage: resolveDocImage });
   await saveDocxAs(bytes, `${baseName()}.docx`);
+}
+
+// shows the diff in the preview pane; the next doc render replaces it
+async function showDiff(file: string | null): Promise<void> {
+  const dir = repoDir();
+  if (!dir) return;
+  try {
+    const diff = await gitDiff(dir, file);
+    if (!diff.trim()) {
+      flashStatus("no changes");
+      return;
+    }
+    if (previewEl.hidden) {
+      previewEl.hidden = false;
+      previewBtn.setAttribute("aria-pressed", "true");
+    }
+    renderDiff(previewEl, diff);
+  } catch (err) {
+    flashStatus(String(err).split("\n")[0]);
+  }
+}
+
+async function switchBranch(branch: string): Promise<void> {
+  const dir = repoDir();
+  if (!dir || !(await confirmDiscard())) return;
+  try {
+    await gitCheckout(dir, branch);
+  } catch (err) {
+    flashGit(String(err).split("\n")[0]);
+    return;
+  }
+  flashGit(`⎇ ${branch}`);
+  refreshExplorer();
+  if (currentPath && !(await reloadFromDisk())) flashStatus("file not on this branch");
+}
+
+// --- command palette (⌘K) ---------------------------------------------------
+
+async function openBranchPalette(): Promise<void> {
+  const dir = repoDir();
+  if (!dir) return;
+  try {
+    const [branches, s] = await Promise.all([gitBranches(dir), gitStatus(dir)]);
+    const items: PaletteItem[] = branches
+      .filter((b) => b !== s.branch)
+      .map((b) => ({ label: b, run: () => void switchBranch(b) }));
+    openPalette(items, { placeholder: items.length ? "Switch branch…" : "No other branches" });
+  } catch (err) {
+    flashStatus(String(err).split("\n")[0]);
+  }
+}
+
+function openThemePalette(): void {
+  const current = currentTheme();
+  openPalette(
+    THEMES.map((t) => ({
+      label: `${t === current ? "•" : " "} ${t}`,
+      run: () => applyAppTheme(t),
+    })),
+    { placeholder: "Switch theme…" }
+  );
+}
+
+function openRecentPalette(): void {
+  const recents = recentFiles().filter((p) => p !== currentPath);
+  openPalette(
+    recents.map((p) => ({
+      label: p.split("/").pop() ?? p,
+      hint: p.slice(0, p.lastIndexOf("/")),
+      run: () => void openDocumentAtPath(p),
+    })),
+    { placeholder: recents.length ? "Open recent file…" : "No recent files" }
+  );
+}
+
+function openHeadingPalette(): void {
+  const items: PaletteItem[] = [];
+  const re = /^(#{1,6})[ \t]+(.+)$/gm;
+  const text = getText(editor);
+  for (let m = re.exec(text); m; m = re.exec(text)) {
+    const pos = m.index;
+    const depth = m[1].length;
+    items.push({
+      label: `${"    ".repeat(depth - 1)}${m[2].trim()}`,
+      hint: `H${depth}`,
+      run: () => {
+        editor.dispatch({
+          selection: { anchor: pos },
+          effects: EditorView.scrollIntoView(pos, { y: "start" }),
+        });
+        editor.focus();
+      },
+    });
+  }
+  openPalette(items, { placeholder: items.length ? "Jump to heading…" : "No headings" });
+}
+
+function commandItems(): PaletteItem[] {
+  const md = docIsMarkdown();
+  const items: PaletteItem[] = [
+    { label: "New Document", hint: "⌘N", run: () => void newDocument() },
+    { label: "Open File…", hint: "⌘O", run: () => void openDocument() },
+    { label: "Open Folder…", hint: "⌘⇧O", run: () => void openFolder() },
+    { label: "Recent Files…", run: openRecentPalette },
+    { label: "Save", hint: "⌘S", run: () => void saveDocument() },
+    { label: "Save As…", hint: "⌘⇧S", run: () => void saveDocument(true) },
+    { label: "Find in Document", hint: "⌘F", run: () => openSearchPanel(editor) },
+    { label: "Format Document", hint: "⌘⇧F", run: () => void runFormat() },
+    { label: "Toggle Focus Mode", hint: "⌘⇧M", run: () => toggleAppFocusMode() },
+    { label: "Toggle Explorer", hint: "⌘⇧E", run: () => toggleExplorerPanel() },
+    { label: "Toggle Terminal", hint: "⌘J", run: () => void toggleTerminalPanel() },
+    { label: "Switch Theme…", hint: "⌘⇧T cycles", run: openThemePalette },
+  ];
+  if (md) {
+    items.push(
+      { label: "Jump to Heading…", run: openHeadingPalette },
+      { label: "Toggle Preview", hint: "⌘/", run: () => togglePreview() },
+      { label: "Insert Link", hint: "⌘⇧K", run: () => insertLink(editor) },
+      { label: "Export to Word…", hint: "⌘E", run: () => void exportDocx() }
+    );
+  }
+  if (!statusGitEl.hidden) {
+    items.push(
+      { label: "Git Commit…", hint: "⌘⇧C", run: () => beginCommit() },
+      { label: "Git Push", hint: "⌘⇧P", run: () => void pushRepo() },
+      { label: "Switch Git Branch…", run: () => void openBranchPalette() },
+      { label: "Show Git Diff", run: () => void showDiff(null) },
+      { label: "Diff Current File", run: () => void showDiff(currentPath) }
+    );
+  }
+  return items;
+}
+
+function openCommandPalette(): void {
+  openPalette(commandItems());
 }
 
 const toolbarActions: Record<string, () => void> = {
@@ -330,8 +604,9 @@ window.addEventListener(
       }
       return;
     }
-    // the commit input handles Enter/Escape itself
+    // the commit input and the palette handle their own keys
     if ((e.target as HTMLElement).id === "commit-input") return;
+    if ((e.target as HTMLElement).closest?.("#palette")) return;
     if (!e.metaKey || e.ctrlKey || e.altKey) return;
     const key = e.key.toLowerCase();
     let handled = true;
@@ -342,12 +617,14 @@ window.addEventListener(
     else if (key === "/") togglePreview();
     else if (key === "b" && !e.shiftKey) { if (docIsMarkdown()) toggleInline(editor, "**"); }
     else if (key === "i" && !e.shiftKey) { if (docIsMarkdown()) toggleInline(editor, "*"); }
-    else if (key === "k" && !e.shiftKey) { if (docIsMarkdown()) insertLink(editor); }
+    else if (key === "k" && !e.shiftKey) openCommandPalette();
+    else if (key === "k" && e.shiftKey) { if (docIsMarkdown()) insertLink(editor); }
     else if (key === "f" && e.shiftKey) void runFormat();
     else if (key === "j" && !e.shiftKey) void toggleTerminalPanel();
     else if (key === "c" && e.shiftKey) beginCommit();
     else if (key === "p" && e.shiftKey) void pushRepo();
     else if (key === "t" && e.shiftKey) cycleAppTheme();
+    else if (key === "m" && e.shiftKey) toggleAppFocusMode();
     else if (key === "e" && e.shiftKey) toggleExplorerPanel();
     else if (key === "o" && e.shiftKey) void openFolder();
     else handled = false;
@@ -367,14 +644,29 @@ window.addEventListener("focus", () => {
   gitFocusTimer = setTimeout(() => {
     void refreshGit();
     refreshExplorer();
+    void checkExternalChange();
   }, 300);
 });
 
 void appWindow.onCloseRequested(async (event) => {
-  if (!(await confirmDiscard())) event.preventDefault();
+  if (!(await confirmDiscard())) {
+    event.preventDefault();
+    return;
+  }
+  localStorage.removeItem(RECOVERY_KEY); // deliberate discard — nothing to recover
 });
 
-initExplorer({ onOpenFile: (p) => void openDocumentAtPath(p), getFallbackRoot: repoDir });
+setInterval(writeRecovery, 30_000);
+window.addEventListener("blur", writeRecovery);
+
+initExplorer({
+  onOpenFile: (p) => void openDocumentAtPath(p),
+  getFallbackRoot: repoDir,
+  getRecentFiles: recentFiles,
+});
+initPalette({ restoreFocus: () => editor.focus() });
 themeBtn.title = `Theme: ${initTheme()} ⌘⇧T`;
+initSyncScroll(editor, previewEl);
 updateStatus("");
 editor.focus();
+void offerRecovery();

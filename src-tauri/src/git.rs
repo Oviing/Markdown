@@ -112,6 +112,57 @@ pub async fn git_push(dir: String) -> Result<String, String> {
     Ok("pushed".into())
 }
 
+fn parse_branches(out: &str) -> Vec<String> {
+    out.lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .map(str::to_string)
+        .collect()
+}
+
+#[tauri::command]
+pub async fn git_branches(dir: String) -> Result<Vec<String>, String> {
+    // --format avoids the "* current" marker and the detached-HEAD line
+    let out = git(&dir, &["branch", "--format=%(refname:short)"]).await?;
+    if !out.status.success() {
+        return Err(stderr_of(&out));
+    }
+    Ok(parse_branches(&String::from_utf8_lossy(&out.stdout)))
+}
+
+#[tauri::command]
+pub async fn git_checkout(dir: String, branch: String) -> Result<(), String> {
+    let out = git(&dir, &["checkout", &branch]).await?;
+    if !out.status.success() {
+        return Err(stderr_of(&out));
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn git_diff(dir: String, file: Option<String>) -> Result<String, String> {
+    let mut args = vec!["diff", "HEAD"];
+    if let Some(ref file) = file {
+        args.push("--");
+        args.push(file);
+    }
+    let out = git(&dir, &args).await?;
+    if out.status.success() {
+        return Ok(String::from_utf8_lossy(&out.stdout).into_owned());
+    }
+    // unborn HEAD (fresh repo): fall back to a plain worktree-vs-index diff
+    let mut args = vec!["diff"];
+    if let Some(ref file) = file {
+        args.push("--");
+        args.push(file);
+    }
+    let out = git(&dir, &args).await?;
+    if !out.status.success() {
+        return Err(stderr_of(&out));
+    }
+    Ok(String::from_utf8_lossy(&out.stdout).into_owned())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -151,6 +202,20 @@ mod tests {
         let out = "# branch.oid 03374e1deadbeef\n# branch.head (detached)\n";
         let s = parse_porcelain_v2(out);
         assert_eq!(s.branch, "(03374e1)");
+    }
+
+    #[test]
+    fn parses_branch_list() {
+        assert_eq!(
+            parse_branches("main\nfeature/one\n  spaced  \n\n"),
+            vec!["main", "feature/one", "spaced"]
+        );
+    }
+
+    #[test]
+    fn empty_branch_list() {
+        assert!(parse_branches("").is_empty());
+        assert!(parse_branches("\n\n").is_empty());
     }
 
     #[test]

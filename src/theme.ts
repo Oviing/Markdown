@@ -1,4 +1,4 @@
-const THEMES = ["auto", "light", "dark", "grey", "ocean"] as const;
+export const THEMES = ["auto", "light", "dark", "grey", "ocean"] as const;
 export type Theme = (typeof THEMES)[number];
 
 const STORAGE_KEY = "theme";
@@ -28,4 +28,13 @@ export function cycleTheme(): Theme {
   const next = THEMES[(THEMES.indexOf(storedTheme()) + 1) % THEMES.length];
   apply(next);
   return next;
+}
+
+export function currentTheme(): Theme {
+  return storedTheme();
+}
+
+export function setTheme(theme: Theme): Theme {
+  apply(theme);
+  return theme;
 }

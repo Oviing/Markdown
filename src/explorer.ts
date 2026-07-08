@@ -19,6 +19,7 @@ interface Entry {
 interface ExplorerOpts {
   onOpenFile: (path: string) => void;
   getFallbackRoot: () => string | null;
+  getRecentFiles?: () => string[];
 }
 
 let opts: ExplorerOpts;
@@ -76,6 +77,24 @@ async function renderTree(): Promise<void> {
     empty.className = "empty";
     empty.textContent = "Open Folder… ⌘⇧O";
     treeEl.appendChild(empty);
+    // fill the otherwise-bare panel with the recent-files list
+    const recents = opts.getRecentFiles?.() ?? [];
+    if (recents.length) {
+      const header = document.createElement("div");
+      header.className = "tree-note";
+      header.textContent = "Recent";
+      treeEl.appendChild(header);
+      for (const path of recents) {
+        const row = document.createElement("div");
+        row.className = "tree-row" + (isTextFile(path) ? "" : " dim");
+        row.dataset.path = path;
+        row.style.paddingLeft = "8px";
+        row.title = path;
+        if (path === activePath) row.classList.add("active");
+        row.appendChild(document.createTextNode(path.split("/").pop() ?? path));
+        treeEl.appendChild(row);
+      }
+    }
     return;
   }
   treeEl.appendChild(await renderChildren(r, 0));

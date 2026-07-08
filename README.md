@@ -17,19 +17,31 @@ cycles H1 → H2 → H3 → none on the current line(s).
 
 | Shortcut | Action                      |
 | -------- | --------------------------- |
+| ⌘K       | Command palette             |
 | ⌘N       | New document                |
 | ⌘O       | Open a markdown file        |
 | ⌘S       | Save                        |
 | ⇧⌘S      | Save as…                    |
 | ⌘E       | Export as Word (.docx)      |
 | ⌘/       | Toggle the rendered preview |
+| ⌘F       | Find / replace              |
 | ⌘B       | Bold                        |
 | ⌘I       | Italic                      |
-| ⌘K       | Insert link                 |
+| ⇧⌘K      | Insert link                 |
+| ⇧⌘M      | Focus/typewriter mode       |
+
+The ⌘K palette fuzzy-searches every command — including jump-to-heading,
+recent files, theme switching, and git actions (commit, push, branch
+switch, diff) — so features stay reachable without extra buttons.
 
 The status bar at the bottom shows the current file, a `●` when there are
 unsaved changes, and a word count. Closing the window with unsaved changes
-asks for confirmation.
+asks for confirmation. Dirty buffers are snapshotted every 30 seconds for
+crash recovery, files edited outside Spark reload automatically (or warn
+before overwriting), and the preview scroll-syncs with the editor,
+renders YAML frontmatter as a metadata block, and understands
+` ```math ` (KaTeX) and ` ```mermaid ` fences. Word export embeds local
+images.
 
 ## Development
 
