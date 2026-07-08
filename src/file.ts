@@ -1,5 +1,5 @@
 import { open, save } from "@tauri-apps/plugin-dialog";
-import { readTextFile, writeTextFile, writeFile, readFile } from "@tauri-apps/plugin-fs";
+import { readTextFile, writeTextFile, writeFile, readFile, stat } from "@tauri-apps/plugin-fs";
 
 const MD_FILTERS = [{ name: "Markdown", extensions: ["md", "markdown", "txt"] }];
 const ALL_FILTER = { name: "All Files", extensions: ["*"] };
@@ -17,6 +17,12 @@ export async function readMarkdownFile(path: string): Promise<string | null> {
 
 export async function readBinaryFile(path: string): Promise<Uint8Array | null> {
   return readFile(path).catch(() => null);
+}
+
+// null when the file is gone, stat fails, or the platform reports no mtime
+export async function statMtime(path: string): Promise<number | null> {
+  const info = await stat(path).catch(() => null);
+  return info?.mtime?.getTime() ?? null;
 }
 
 export async function saveTextAs(text: string, suggestedName: string): Promise<string | null> {

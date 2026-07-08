@@ -2,7 +2,7 @@ import { confirm } from "@tauri-apps/plugin-dialog";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { createEditor, getText, setText, setLanguageFor } from "./editor";
 import { renderPreview } from "./preview";
-import { openMarkdownFile, readMarkdownFile, readBinaryFile, saveMarkdown, saveTextAs, saveDocxAs } from "./file";
+import { openMarkdownFile, readMarkdownFile, readBinaryFile, saveMarkdown, saveTextAs, saveDocxAs, statMtime } from "./file";
 import { isMarkdownFile } from "./filetype";
 import { markdownToDocx } from "./export-docx";
 import {
@@ -34,6 +34,7 @@ const statusGitEl = document.querySelector<HTMLElement>("#status-git")!;
 
 let currentPath: string | null = null;
 let savedText = "";
+let lastMtime: number | null = null;
 let previewTimer: ReturnType<typeof setTimeout> | undefined;
 
 const toolbarEl = document.querySelector<HTMLElement>("#toolbar")!;
@@ -188,26 +189,27 @@ async function toggleTerminalPanel(): Promise<void> {
   if (!opened) editor.focus();
 }
 
-let themeFlashTimer: ReturnType<typeof setTimeout> | undefined;
+let statusFlashTimer: ReturnType<typeof setTimeout> | undefined;
+
+// transient message in the word-count slot, restored after a beat
+function flashStatus(msg: string): void {
+  clearTimeout(statusFlashTimer);
+  statusWordsEl.textContent = msg;
+  statusFlashTimer = setTimeout(() => updateStatus(getText(editor)), 1500);
+}
 
 function cycleAppTheme(): void {
   const t = cycleTheme();
   refreshTerminalTheme();
   themeBtn.title = `Theme: ${t} ⌘⇧T`;
-  clearTimeout(themeFlashTimer);
-  statusWordsEl.textContent = `theme: ${t}`;
-  themeFlashTimer = setTimeout(() => updateStatus(getText(editor)), 1500);
+  flashStatus(`theme: ${t}`);
 }
-
-let formatFlashTimer: ReturnType<typeof setTimeout> | undefined;
 
 async function runFormat(): Promise<void> {
   if (await formatDocument(editor, currentPath ? fileName() : null)) return;
-  clearTimeout(formatFlashTimer);
   const n = fileName();
   const dot = n.lastIndexOf(".");
-  statusWordsEl.textContent = `no formatter for ${dot > 0 ? n.slice(dot) : n}`;
-  formatFlashTimer = setTimeout(() => updateStatus(getText(editor)), 1500);
+  flashStatus(`no formatter for ${dot > 0 ? n.slice(dot) : n}`);
 }
 
 function toggleExplorerPanel(): void {
@@ -232,6 +234,7 @@ async function newDocument(): Promise<void> {
   if (!(await confirmDiscard())) return;
   currentPath = null;
   savedText = "";
+  lastMtime = null;
   setText(editor, "");
   updateStatus("");
   void refreshGit();
@@ -243,6 +246,10 @@ async function newDocument(): Promise<void> {
 function loadDocument(path: string, text: string): void {
   currentPath = path;
   savedText = text;
+  lastMtime = null;
+  void statMtime(path).then((m) => {
+    if (currentPath === path) lastMtime = m;
+  });
   setText(editor, text);
   updateStatus(text);
   void refreshGit();
@@ -268,6 +275,17 @@ async function openDocumentAtPath(path: string): Promise<void> {
 async function saveDocument(forceDialog = false): Promise<void> {
   const text = getText(editor);
   if (currentPath && !forceDialog) {
+    // don't silently clobber an external edit
+    const diskMtime = await statMtime(currentPath);
+    if (diskMtime !== null && lastMtime !== null && diskMtime > lastMtime) {
+      const overwrite = await confirm("This file changed on disk since you opened it. Overwrite?", {
+        title: "File Changed on Disk",
+        kind: "warning",
+        okLabel: "Overwrite",
+        cancelLabel: "Cancel",
+      });
+      if (!overwrite) return;
+    }
     await saveMarkdown(currentPath, text);
   } else {
     const path = await saveTextAs(text, docIsMarkdown() ? `${baseName()}.md` : fileName());
@@ -276,8 +294,29 @@ async function saveDocument(forceDialog = false): Promise<void> {
     markActive(path);
   }
   savedText = text;
+  lastMtime = await statMtime(currentPath);
   updateStatus(text);
   void refreshGit();
+}
+
+async function reloadFromDisk(): Promise<boolean> {
+  if (!currentPath) return false;
+  const text = await readMarkdownFile(currentPath);
+  if (text === null) return false;
+  loadDocument(currentPath, text);
+  return true;
+}
+
+// focus-time check: someone may have edited the file outside Spark
+async function checkExternalChange(): Promise<void> {
+  if (!currentPath || lastMtime === null) return;
+  const diskMtime = await statMtime(currentPath);
+  if (diskMtime === null || diskMtime <= lastMtime) return;
+  if (isDirty()) {
+    flashStatus("file changed on disk — save will ask to overwrite");
+  } else if (await reloadFromDisk()) {
+    flashStatus("reloaded from disk");
+  }
 }
 
 // local images only: relative paths resolve against the document's directory;
@@ -376,6 +415,7 @@ window.addEventListener("focus", () => {
   gitFocusTimer = setTimeout(() => {
     void refreshGit();
     refreshExplorer();
+    void checkExternalChange();
   }, 300);
 });
 
