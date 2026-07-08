@@ -16,6 +16,7 @@ import {
   convertInchesToTwip,
 } from "docx";
 import { marked, type Token, type Tokens } from "marked";
+import { splitFrontmatter } from "./frontmatter";
 
 const HEADINGS = [
   HeadingLevel.HEADING_1,
@@ -268,7 +269,8 @@ function walkBlocks(tokens: Token[], ctx: BlockCtx, out: Block[]): void {
 }
 
 export async function markdownToDocx(md: string): Promise<Uint8Array> {
-  const tokens = marked.lexer(md);
+  // frontmatter is document metadata, not content — keep it out of the export
+  const tokens = marked.lexer(splitFrontmatter(md).body);
   const children: Block[] = [];
   walkBlocks(tokens, { listLevel: 0, quote: false }, children);
   if (children.length === 0) children.push(new Paragraph({}));
