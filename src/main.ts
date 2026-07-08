@@ -16,8 +16,11 @@ import {
 import { formatDocument } from "./prettify";
 import { gitStatus, gitCommit, gitPush } from "./git";
 import { toggleTerminal, terminalPanelEl, refreshTerminalTheme } from "./terminal";
-import { initTheme, cycleTheme } from "./theme";
+import { initTheme, cycleTheme, currentTheme, setTheme, THEMES, type Theme } from "./theme";
 import { initSyncScroll, pushEditorScroll } from "./syncscroll";
+import { initPalette, openPalette, type PaletteItem } from "./palette";
+import { openSearchPanel } from "@codemirror/search";
+import { EditorView } from "@codemirror/view";
 import {
   initExplorer,
   toggleExplorer,
@@ -205,11 +208,15 @@ function flashStatus(msg: string): void {
   statusFlashTimer = setTimeout(() => updateStatus(getText(editor)), 1500);
 }
 
-function cycleAppTheme(): void {
-  const t = cycleTheme();
+function applyAppTheme(t: Theme): void {
+  setTheme(t);
   refreshTerminalTheme();
   themeBtn.title = `Theme: ${t} ⌘⇧T`;
   flashStatus(`theme: ${t}`);
+}
+
+function cycleAppTheme(): void {
+  applyAppTheme(cycleTheme());
 }
 
 async function runFormat(): Promise<void> {
@@ -250,6 +257,22 @@ async function newDocument(): Promise<void> {
   editor.focus();
 }
 
+const RECENT_KEY = "recent-files";
+
+function recentFiles(): string[] {
+  try {
+    const list: unknown = JSON.parse(localStorage.getItem(RECENT_KEY) ?? "[]");
+    return Array.isArray(list) ? list.filter((p): p is string => typeof p === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+function rememberRecent(path: string): void {
+  const list = [path, ...recentFiles().filter((p) => p !== path)].slice(0, 10);
+  localStorage.setItem(RECENT_KEY, JSON.stringify(list));
+}
+
 function loadDocument(path: string, text: string): void {
   currentPath = path;
   savedText = text;
@@ -257,6 +280,7 @@ function loadDocument(path: string, text: string): void {
   void statMtime(path).then((m) => {
     if (currentPath === path) lastMtime = m;
   });
+  rememberRecent(path);
   setText(editor, text);
   updateStatus(text);
   void refreshGit();
@@ -299,6 +323,7 @@ async function saveDocument(forceDialog = false): Promise<void> {
     if (!path) return;
     currentPath = path;
     markActive(path);
+    rememberRecent(path);
   }
   savedText = text;
   lastMtime = await statMtime(currentPath);
@@ -394,6 +419,89 @@ async function exportDocx(): Promise<void> {
   await saveDocxAs(bytes, `${baseName()}.docx`);
 }
 
+// --- command palette (⌘K) ---------------------------------------------------
+
+function openThemePalette(): void {
+  const current = currentTheme();
+  openPalette(
+    THEMES.map((t) => ({
+      label: `${t === current ? "•" : " "} ${t}`,
+      run: () => applyAppTheme(t),
+    })),
+    { placeholder: "Switch theme…" }
+  );
+}
+
+function openRecentPalette(): void {
+  const recents = recentFiles().filter((p) => p !== currentPath);
+  openPalette(
+    recents.map((p) => ({
+      label: p.split("/").pop() ?? p,
+      hint: p.slice(0, p.lastIndexOf("/")),
+      run: () => void openDocumentAtPath(p),
+    })),
+    { placeholder: recents.length ? "Open recent file…" : "No recent files" }
+  );
+}
+
+function openHeadingPalette(): void {
+  const items: PaletteItem[] = [];
+  const re = /^(#{1,6})[ \t]+(.+)$/gm;
+  const text = getText(editor);
+  for (let m = re.exec(text); m; m = re.exec(text)) {
+    const pos = m.index;
+    const depth = m[1].length;
+    items.push({
+      label: `${"    ".repeat(depth - 1)}${m[2].trim()}`,
+      hint: `H${depth}`,
+      run: () => {
+        editor.dispatch({
+          selection: { anchor: pos },
+          effects: EditorView.scrollIntoView(pos, { y: "start" }),
+        });
+        editor.focus();
+      },
+    });
+  }
+  openPalette(items, { placeholder: items.length ? "Jump to heading…" : "No headings" });
+}
+
+function commandItems(): PaletteItem[] {
+  const md = docIsMarkdown();
+  const items: PaletteItem[] = [
+    { label: "New Document", hint: "⌘N", run: () => void newDocument() },
+    { label: "Open File…", hint: "⌘O", run: () => void openDocument() },
+    { label: "Open Folder…", hint: "⌘⇧O", run: () => void openFolder() },
+    { label: "Recent Files…", run: openRecentPalette },
+    { label: "Save", hint: "⌘S", run: () => void saveDocument() },
+    { label: "Save As…", hint: "⌘⇧S", run: () => void saveDocument(true) },
+    { label: "Find in Document", hint: "⌘F", run: () => openSearchPanel(editor) },
+    { label: "Format Document", hint: "⌘⇧F", run: () => void runFormat() },
+    { label: "Toggle Explorer", hint: "⌘⇧E", run: () => toggleExplorerPanel() },
+    { label: "Toggle Terminal", hint: "⌘J", run: () => void toggleTerminalPanel() },
+    { label: "Switch Theme…", hint: "⌘⇧T cycles", run: openThemePalette },
+  ];
+  if (md) {
+    items.push(
+      { label: "Jump to Heading…", run: openHeadingPalette },
+      { label: "Toggle Preview", hint: "⌘/", run: () => togglePreview() },
+      { label: "Insert Link", hint: "⌘⇧K", run: () => insertLink(editor) },
+      { label: "Export to Word…", hint: "⌘E", run: () => void exportDocx() }
+    );
+  }
+  if (!statusGitEl.hidden) {
+    items.push(
+      { label: "Git Commit…", hint: "⌘⇧C", run: () => beginCommit() },
+      { label: "Git Push", hint: "⌘⇧P", run: () => void pushRepo() }
+    );
+  }
+  return items;
+}
+
+function openCommandPalette(): void {
+  openPalette(commandItems());
+}
+
 const toolbarActions: Record<string, () => void> = {
   bold: () => toggleInline(editor, "**"),
   italic: () => toggleInline(editor, "*"),
@@ -438,8 +546,9 @@ window.addEventListener(
       }
       return;
     }
-    // the commit input handles Enter/Escape itself
+    // the commit input and the palette handle their own keys
     if ((e.target as HTMLElement).id === "commit-input") return;
+    if ((e.target as HTMLElement).closest?.("#palette")) return;
     if (!e.metaKey || e.ctrlKey || e.altKey) return;
     const key = e.key.toLowerCase();
     let handled = true;
@@ -450,7 +559,8 @@ window.addEventListener(
     else if (key === "/") togglePreview();
     else if (key === "b" && !e.shiftKey) { if (docIsMarkdown()) toggleInline(editor, "**"); }
     else if (key === "i" && !e.shiftKey) { if (docIsMarkdown()) toggleInline(editor, "*"); }
-    else if (key === "k" && !e.shiftKey) { if (docIsMarkdown()) insertLink(editor); }
+    else if (key === "k" && !e.shiftKey) openCommandPalette();
+    else if (key === "k" && e.shiftKey) { if (docIsMarkdown()) insertLink(editor); }
     else if (key === "f" && e.shiftKey) void runFormat();
     else if (key === "j" && !e.shiftKey) void toggleTerminalPanel();
     else if (key === "c" && e.shiftKey) beginCommit();
@@ -490,7 +600,12 @@ void appWindow.onCloseRequested(async (event) => {
 setInterval(writeRecovery, 30_000);
 window.addEventListener("blur", writeRecovery);
 
-initExplorer({ onOpenFile: (p) => void openDocumentAtPath(p), getFallbackRoot: repoDir });
+initExplorer({
+  onOpenFile: (p) => void openDocumentAtPath(p),
+  getFallbackRoot: repoDir,
+  getRecentFiles: recentFiles,
+});
+initPalette({ restoreFocus: () => editor.focus() });
 themeBtn.title = `Theme: ${initTheme()} ⌘⇧T`;
 initSyncScroll(editor, previewEl);
 updateStatus("");

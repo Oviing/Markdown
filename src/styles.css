@@ -273,6 +273,14 @@ body.typing #toolbar:hover,
   color: var(--accent);
 }
 
+#file-tree .tree-note {
+  padding: 10px 10px 4px;
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
 #editor {
   flex: 1;
   min-width: 0;
@@ -556,6 +564,84 @@ body.typing #toolbar:hover,
 
 #status-git[hidden] {
   display: none;
+}
+
+/* command palette — transient overlay, no permanent chrome */
+#palette {
+  position: fixed;
+  top: 14%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(480px, 84vw);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.22);
+  font-family: var(--sans);
+  font-size: 13.5px;
+  z-index: 100;
+  overflow: hidden;
+}
+
+#palette[hidden] {
+  display: none;
+}
+
+#palette input {
+  appearance: none;
+  background: none;
+  border: none;
+  outline: none;
+  font: inherit;
+  color: var(--fg);
+  width: 100%;
+  padding: 11px 14px;
+  box-sizing: border-box;
+}
+
+#palette input::placeholder {
+  color: var(--muted);
+}
+
+#palette-list {
+  max-height: 42vh;
+  overflow-y: auto;
+  border-top: 1px solid var(--border);
+  padding: 4px 0;
+}
+
+#palette-list:empty {
+  display: none;
+}
+
+.palette-item {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1em;
+  padding: 5px 14px;
+  white-space: pre;
+  overflow: hidden;
+  cursor: default;
+}
+
+.palette-item .label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.palette-item:hover {
+  background: var(--code-bg);
+}
+
+.palette-item.selected {
+  background: var(--selection);
+}
+
+.palette-item .hint {
+  color: var(--muted);
+  font-size: 11.5px;
+  flex: none;
 }
 
 #commit-input {
