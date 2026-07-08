@@ -523,6 +523,20 @@ body.typing #toolbar:hover,
   max-width: 100%;
 }
 
+#preview .math-block {
+  overflow-x: auto;
+  margin: 1em 0;
+}
+
+#preview .mermaid-block {
+  margin: 1em 0;
+}
+
+#preview .mermaid-block svg {
+  max-width: 100%;
+  height: auto;
+}
+
 #terminal-panel {
   flex: 0 0 auto;
   height: 240px;

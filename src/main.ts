@@ -1,7 +1,7 @@
 import { confirm } from "@tauri-apps/plugin-dialog";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { createEditor, getText, setText, setLanguageFor } from "./editor";
-import { renderPreview, renderDiff } from "./preview";
+import { renderPreview, renderDiff, refreshPreviewTheme } from "./preview";
 import { openMarkdownFile, readMarkdownFile, readBinaryFile, saveMarkdown, saveTextAs, saveDocxAs, statMtime } from "./file";
 import { isMarkdownFile } from "./filetype";
 import { markdownToDocx } from "./export-docx";
@@ -211,6 +211,7 @@ function flashStatus(msg: string): void {
 function applyAppTheme(t: Theme): void {
   setTheme(t);
   refreshTerminalTheme();
+  refreshPreviewTheme(previewEl, getText(editor));
   themeBtn.title = `Theme: ${t} ⌘⇧T`;
   flashStatus(`theme: ${t}`);
 }
