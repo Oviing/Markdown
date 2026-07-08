@@ -1,0 +1,59 @@
+name: Build macOS App
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write # required to create the Release + tag
+
+jobs:
+  build:
+    runs-on: macos-latest # Apple Silicon (arm64)
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compute version
+        id: ver
+        run: echo "version=0.0.${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Inject version into build files
+        env:
+          V: ${{ steps.ver.outputs.version }}
+        run: |
+          # tauri.conf.json is the source of truth for the .app bundle version
+          jq --arg v "$V" '.version = $v' src-tauri/tauri.conf.json > tmp && mv tmp src-tauri/tauri.conf.json
+          jq --arg v "$V" '.version = $v' package.json > tmp && mv tmp package.json
+          # Cargo.toml: replace the first version = "..." (the [package] one)
+          sed -i '' "0,/^version = \".*\"/s//version = \"$V\"/" src-tauri/Cargo.toml
+
+      - name: Build the app
+        run: npm run tauri build
+
+      - name: Zip Spark.app
+        env:
+          V: ${{ steps.ver.outputs.version }}
+        run: |
+          cd src-tauri/target/release/bundle/macos
+          ditto -c -k --keepParent "Spark.app" "$GITHUB_WORKSPACE/Spark-$V.zip"
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.ver.outputs.version }}
+          name: Spark v${{ steps.ver.outputs.version }}
+          files: Spark-${{ steps.ver.outputs.version }}.zip
+          make_latest: true
