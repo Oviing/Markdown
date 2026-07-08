@@ -6,6 +6,20 @@ export to Markdown or Word.
 
 Built with Tauri 2, CodeMirror 6, marked, and docx.
 
+## Installing
+
+Download `Spark-x.y.z.zip` from the [Releases](../../releases) page, unzip it,
+and drag **Spark.app** into `/Applications`.
+
+Spark isn't notarized by Apple (that needs a paid Developer account), so the
+first launch shows *"Spark is damaged and can't be opened."* This is expected
+for un-notarized apps downloaded from the internet. To clear it, run once in
+Terminal:
+
+    xattr -dr com.apple.quarantine /Applications/Spark.app
+
+Then open Spark normally.
+
 ## Toolbar
 
 Formatting (bold, italic, strikethrough, heading, lists, quote, code, link),
