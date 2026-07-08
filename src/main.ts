@@ -295,8 +295,61 @@ async function saveDocument(forceDialog = false): Promise<void> {
   }
   savedText = text;
   lastMtime = await statMtime(currentPath);
+  localStorage.removeItem(RECOVERY_KEY);
   updateStatus(text);
   void refreshGit();
+}
+
+// crash recovery: a dirty buffer is snapshotted so an unclean exit loses nothing
+const RECOVERY_KEY = "recovery";
+
+interface RecoverySlot {
+  path: string | null;
+  text: string;
+  ts: number;
+}
+
+function writeRecovery(): void {
+  try {
+    if (isDirty()) {
+      const slot: RecoverySlot = { path: currentPath, text: getText(editor), ts: Date.now() };
+      localStorage.setItem(RECOVERY_KEY, JSON.stringify(slot));
+    } else {
+      localStorage.removeItem(RECOVERY_KEY);
+    }
+  } catch {
+    // quota exceeded on a huge doc — recovery is best-effort
+  }
+}
+
+async function offerRecovery(): Promise<void> {
+  const raw = localStorage.getItem(RECOVERY_KEY);
+  if (!raw) return;
+  localStorage.removeItem(RECOVERY_KEY);
+  let slot: RecoverySlot;
+  try {
+    slot = JSON.parse(raw) as RecoverySlot;
+  } catch {
+    return;
+  }
+  if (typeof slot?.text !== "string") return;
+  const name = slot.path ? (slot.path.split("/").pop() ?? "Untitled") : "Untitled";
+  const restore = await confirm(`Restore unsaved changes to “${name}” from your last session?`, {
+    title: "Restore Unsaved Changes",
+    kind: "info",
+    okLabel: "Restore",
+    cancelLabel: "Discard",
+  });
+  if (!restore) return;
+  if (slot.path) {
+    const disk = await readMarkdownFile(slot.path);
+    if (disk !== null) {
+      loadDocument(slot.path, disk); // savedText = disk state, so the dirty dot is truthful
+      if (disk !== slot.text) setText(editor, slot.text);
+      return;
+    }
+  }
+  setText(editor, slot.text);
 }
 
 async function reloadFromDisk(): Promise<boolean> {
@@ -420,10 +473,18 @@ window.addEventListener("focus", () => {
 });
 
 void appWindow.onCloseRequested(async (event) => {
-  if (!(await confirmDiscard())) event.preventDefault();
+  if (!(await confirmDiscard())) {
+    event.preventDefault();
+    return;
+  }
+  localStorage.removeItem(RECOVERY_KEY); // deliberate discard — nothing to recover
 });
+
+setInterval(writeRecovery, 30_000);
+window.addEventListener("blur", writeRecovery);
 
 initExplorer({ onOpenFile: (p) => void openDocumentAtPath(p), getFallbackRoot: repoDir });
 themeBtn.title = `Theme: ${initTheme()} ⌘⇧T`;
 updateStatus("");
 editor.focus();
+void offerRecovery();
