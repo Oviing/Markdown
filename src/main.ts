@@ -1,6 +1,6 @@
 import { confirm } from "@tauri-apps/plugin-dialog";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { createEditor, getText, setText, setLanguageFor } from "./editor";
+import { createEditor, getText, setText, setLanguageFor, toggleFocusMode } from "./editor";
 import { renderPreview, renderDiff, refreshPreviewTheme } from "./preview";
 import { openMarkdownFile, readMarkdownFile, readBinaryFile, saveMarkdown, saveTextAs, saveDocxAs, statMtime } from "./file";
 import { isMarkdownFile } from "./filetype";
@@ -229,6 +229,11 @@ async function runFormat(): Promise<void> {
 
 function toggleExplorerPanel(): void {
   explorerBtn.setAttribute("aria-pressed", String(toggleExplorer()));
+}
+
+function toggleAppFocusMode(): void {
+  flashStatus(`focus mode ${toggleFocusMode(editor) ? "on" : "off"}`);
+  editor.focus();
 }
 
 async function openFolder(): Promise<void> {
@@ -526,6 +531,7 @@ function commandItems(): PaletteItem[] {
     { label: "Save As…", hint: "⌘⇧S", run: () => void saveDocument(true) },
     { label: "Find in Document", hint: "⌘F", run: () => openSearchPanel(editor) },
     { label: "Format Document", hint: "⌘⇧F", run: () => void runFormat() },
+    { label: "Toggle Focus Mode", hint: "⌘⇧M", run: () => toggleAppFocusMode() },
     { label: "Toggle Explorer", hint: "⌘⇧E", run: () => toggleExplorerPanel() },
     { label: "Toggle Terminal", hint: "⌘J", run: () => void toggleTerminalPanel() },
     { label: "Switch Theme…", hint: "⌘⇧T cycles", run: openThemePalette },
@@ -618,6 +624,7 @@ window.addEventListener(
     else if (key === "c" && e.shiftKey) beginCommit();
     else if (key === "p" && e.shiftKey) void pushRepo();
     else if (key === "t" && e.shiftKey) cycleAppTheme();
+    else if (key === "m" && e.shiftKey) toggleAppFocusMode();
     else if (key === "e" && e.shiftKey) toggleExplorerPanel();
     else if (key === "o" && e.shiftKey) void openFolder();
     else handled = false;

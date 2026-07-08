@@ -364,6 +364,16 @@ body.typing #toolbar:hover,
   background: var(--code-bg);
 }
 
+/* focus mode (⌘⇧M): dim everything but the paragraph being written */
+.cm-focus-mode .cm-line {
+  opacity: 0.3;
+  transition: opacity 0.2s;
+}
+
+.cm-focus-mode .cm-line.cm-active-para {
+  opacity: 1;
+}
+
 #preview {
   flex: 1;
   min-width: 0;
