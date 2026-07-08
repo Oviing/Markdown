@@ -1,6 +1,7 @@
 import { EditorView, keymap, placeholder, drawSelection, highlightSpecialChars } from "@codemirror/view";
 import { EditorState, Compartment } from "@codemirror/state";
 import { history, defaultKeymap, historyKeymap } from "@codemirror/commands";
+import { search, searchKeymap, highlightSelectionMatches } from "@codemirror/search";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { languages } from "@codemirror/language-data";
 import { syntaxHighlighting, HighlightStyle, LanguageDescription } from "@codemirror/language";
@@ -115,7 +116,9 @@ export function createEditor(
         syntaxHighlighting(mdHighlight),
         theme,
         placeholder("Start writing…"),
-        keymap.of([...defaultKeymap, ...historyKeymap]),
+        search({ top: true }),
+        highlightSelectionMatches(),
+        keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap]),
         EditorView.updateListener.of((update) => {
           if (update.docChanged) onChange(update.state.doc.toString());
         }),
