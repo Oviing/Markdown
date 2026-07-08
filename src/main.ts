@@ -47,10 +47,10 @@ const terminalBtn = toolbarEl.querySelector<HTMLButtonElement>('[data-action="te
 const themeBtn = toolbarEl.querySelector<HTMLButtonElement>('[data-action="theme"]')!;
 const explorerBtn = toolbarEl.querySelector<HTMLButtonElement>('[data-action="explorer"]')!;
 
-const editor = createEditor(document.querySelector<HTMLElement>("#editor")!, (text) => {
+const editor = createEditor(document.querySelector<HTMLElement>("#editor")!, () => {
   document.body.classList.add("typing");
-  updateStatus(text);
-  schedulePreview(text);
+  scheduleStatus();
+  schedulePreview();
 });
 
 function fileName(): string {
@@ -83,19 +83,44 @@ function applyDocMode(): void {
   void setLanguageFor(editor, currentPath ? fileName() : null);
 }
 
-function updateStatus(text: string): void {
-  const words = text.trim().split(/\s+/).filter(Boolean).length;
-  const dirty = getText(editor) !== savedText;
-  statusFileEl.textContent = fileName() + (dirty ? " ●" : "");
-  statusWordsEl.textContent = `${words} ${words === 1 ? "word" : "words"}`;
-  void appWindow.setTitle(fileName() + (dirty ? " — Edited" : ""));
+// counting matches avoids materializing an array of every word in the doc
+function countWords(text: string): number {
+  const re = /\S+/g;
+  let words = 0;
+  while (re.exec(text)) words++;
+  return words;
 }
 
-function schedulePreview(text: string): void {
+let lastTitle: string | null = null;
+
+function updateStatus(text: string): void {
+  clearTimeout(statusTimer);
+  const name = fileName();
+  const dirty = text !== savedText;
+  const words = countWords(text);
+  statusFileEl.textContent = name + (dirty ? " ●" : "");
+  statusWordsEl.textContent = `${words} ${words === 1 ? "word" : "words"}`;
+  const title = name + (dirty ? " — Edited" : "");
+  if (title !== lastTitle) {
+    lastTitle = title;
+    void appWindow.setTitle(title); // IPC — only when the title actually changes
+  }
+}
+
+// status needs the full text (O(doc size)), so recompute after a typing pause
+// rather than on every keystroke
+let statusTimer: ReturnType<typeof setTimeout> | undefined;
+
+function scheduleStatus(): void {
+  clearTimeout(statusTimer);
+  statusTimer = setTimeout(() => updateStatus(getText(editor)), 150);
+}
+
+function schedulePreview(): void {
   if (previewEl.hidden) return;
   clearTimeout(previewTimer);
   previewTimer = setTimeout(() => {
-    renderPreview(previewEl, text);
+    renderPreview(previewEl, getText(editor));
     pushEditorScroll(editor, previewEl);
   }, 150);
 }
@@ -204,6 +229,7 @@ let statusFlashTimer: ReturnType<typeof setTimeout> | undefined;
 // transient message in the word-count slot, restored after a beat
 function flashStatus(msg: string): void {
   clearTimeout(statusFlashTimer);
+  clearTimeout(statusTimer); // a pending keystroke recompute must not clobber the flash
   statusWordsEl.textContent = msg;
   statusFlashTimer = setTimeout(() => updateStatus(getText(editor)), 1500);
 }

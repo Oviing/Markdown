@@ -170,7 +170,7 @@ export async function setLanguageFor(view: EditorView, fileName: string | null):
 
 export function createEditor(
   parent: HTMLElement,
-  onChange: (text: string) => void
+  onChange: () => void
 ): EditorView {
   const view = new EditorView({
     parent,
@@ -190,8 +190,11 @@ export function createEditor(
         search({ top: true }),
         highlightSelectionMatches(),
         keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap]),
+        // no doc.toString() here — stringifying the whole document on every
+        // keystroke makes large (typically non-markdown) files lag; consumers
+        // debounce and pull the text themselves
         EditorView.updateListener.of((update) => {
-          if (update.docChanged) onChange(update.state.doc.toString());
+          if (update.docChanged) onChange();
         }),
       ],
     }),
