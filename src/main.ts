@@ -2,7 +2,7 @@ import { confirm } from "@tauri-apps/plugin-dialog";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { createEditor, getText, setText, setLanguageFor } from "./editor";
 import { renderPreview } from "./preview";
-import { openMarkdownFile, readMarkdownFile, saveMarkdown, saveTextAs, saveDocxAs } from "./file";
+import { openMarkdownFile, readMarkdownFile, readBinaryFile, saveMarkdown, saveTextAs, saveDocxAs } from "./file";
 import { isMarkdownFile } from "./filetype";
 import { markdownToDocx } from "./export-docx";
 import {
@@ -280,9 +280,18 @@ async function saveDocument(forceDialog = false): Promise<void> {
   void refreshGit();
 }
 
+// local images only: relative paths resolve against the document's directory;
+// remote URLs keep the alt-text fallback (data: URLs are handled by the exporter)
+function resolveDocImage(href: string): Promise<Uint8Array | null> {
+  if (/^[a-z][a-z0-9+.-]*:/i.test(href)) return Promise.resolve(null);
+  if (href.startsWith("/")) return readBinaryFile(href);
+  const dir = repoDir();
+  return dir ? readBinaryFile(`${dir}/${href}`) : Promise.resolve(null);
+}
+
 async function exportDocx(): Promise<void> {
   if (!docIsMarkdown()) return;
-  const bytes = await markdownToDocx(getText(editor));
+  const bytes = await markdownToDocx(getText(editor), { resolveImage: resolveDocImage });
   await saveDocxAs(bytes, `${baseName()}.docx`);
 }
 
