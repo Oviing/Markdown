@@ -8,17 +8,29 @@ Built with Tauri 2, CodeMirror 6, marked, and docx.
 
 ## Installing
 
-Download `Spark-x.y.z.zip` from the [Releases](../../releases) page, unzip it,
-and drag **Spark.app** into `/Applications`.
+Paste this in Terminal — it installs (or updates) the latest release into
+`/Applications`:
 
-Spark isn't notarized by Apple (that needs a paid Developer account), so the
-first launch shows *"Spark is damaged and can't be opened."* This is expected
-for un-notarized apps downloaded from the internet. To clear it, run once in
-Terminal:
+```sh
+curl -fsSL https://raw.githubusercontent.com/Oviing/Markdown/main/install.sh | bash
+```
+
+After that, Spark opens with a normal double-click — no Gatekeeper dialogs.
+(Terminal downloads aren't quarantined the way browser downloads are, and
+Spark isn't notarized by Apple, which needs a paid Developer account.)
+
+### Manual download
+
+Download `Spark-x.y.z.zip` from the [Releases](../../releases) page, unzip it,
+and drag **Spark.app** into `/Applications`. The first launch will show
+*"Apple could not verify 'Spark' is free of malware"* — expected for
+un-notarized apps downloaded with a browser. Either run once in Terminal:
 
     xattr -dr com.apple.quarantine /Applications/Spark.app
 
-Then open Spark normally.
+or click **Done** (not "Move to Trash"), then open **System Settings →
+Privacy & Security**, scroll to *"Spark" was blocked*, and click **Open
+Anyway**.
 
 ## Toolbar
 
