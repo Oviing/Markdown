@@ -17,6 +17,7 @@ import { formatDocument } from "./prettify";
 import { gitStatus, gitCommit, gitPush } from "./git";
 import { toggleTerminal, terminalPanelEl, refreshTerminalTheme } from "./terminal";
 import { initTheme, cycleTheme } from "./theme";
+import { initSyncScroll, pushEditorScroll } from "./syncscroll";
 import {
   initExplorer,
   toggleExplorer,
@@ -90,14 +91,20 @@ function updateStatus(text: string): void {
 function schedulePreview(text: string): void {
   if (previewEl.hidden) return;
   clearTimeout(previewTimer);
-  previewTimer = setTimeout(() => renderPreview(previewEl, text), 150);
+  previewTimer = setTimeout(() => {
+    renderPreview(previewEl, text);
+    pushEditorScroll(editor, previewEl);
+  }, 150);
 }
 
 function togglePreview(): void {
   if (previewEl.hidden && !docIsMarkdown()) return; // can always close, never open for code
   previewEl.hidden = !previewEl.hidden;
   previewBtn.setAttribute("aria-pressed", String(!previewEl.hidden));
-  if (!previewEl.hidden) renderPreview(previewEl, getText(editor));
+  if (!previewEl.hidden) {
+    renderPreview(previewEl, getText(editor));
+    pushEditorScroll(editor, previewEl);
+  }
   editor.focus();
 }
 
@@ -485,6 +492,7 @@ window.addEventListener("blur", writeRecovery);
 
 initExplorer({ onOpenFile: (p) => void openDocumentAtPath(p), getFallbackRoot: repoDir });
 themeBtn.title = `Theme: ${initTheme()} ⌘⇧T`;
+initSyncScroll(editor, previewEl);
 updateStatus("");
 editor.focus();
 void offerRecovery();
