@@ -1,7 +1,7 @@
 import { confirm } from "@tauri-apps/plugin-dialog";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { createEditor, getText, setText, setLanguageFor } from "./editor";
-import { renderPreview } from "./preview";
+import { renderPreview, renderDiff } from "./preview";
 import { openMarkdownFile, readMarkdownFile, readBinaryFile, saveMarkdown, saveTextAs, saveDocxAs, statMtime } from "./file";
 import { isMarkdownFile } from "./filetype";
 import { markdownToDocx } from "./export-docx";
@@ -14,7 +14,7 @@ import {
   toggleOrderedList,
 } from "./format";
 import { formatDocument } from "./prettify";
-import { gitStatus, gitCommit, gitPush } from "./git";
+import { gitStatus, gitCommit, gitPush, gitBranches, gitCheckout, gitDiff } from "./git";
 import { toggleTerminal, terminalPanelEl, refreshTerminalTheme } from "./terminal";
 import { initTheme, cycleTheme, currentTheme, setTheme, THEMES, type Theme } from "./theme";
 import { initSyncScroll, pushEditorScroll } from "./syncscroll";
@@ -419,7 +419,55 @@ async function exportDocx(): Promise<void> {
   await saveDocxAs(bytes, `${baseName()}.docx`);
 }
 
+// shows the diff in the preview pane; the next doc render replaces it
+async function showDiff(file: string | null): Promise<void> {
+  const dir = repoDir();
+  if (!dir) return;
+  try {
+    const diff = await gitDiff(dir, file);
+    if (!diff.trim()) {
+      flashStatus("no changes");
+      return;
+    }
+    if (previewEl.hidden) {
+      previewEl.hidden = false;
+      previewBtn.setAttribute("aria-pressed", "true");
+    }
+    renderDiff(previewEl, diff);
+  } catch (err) {
+    flashStatus(String(err).split("\n")[0]);
+  }
+}
+
+async function switchBranch(branch: string): Promise<void> {
+  const dir = repoDir();
+  if (!dir || !(await confirmDiscard())) return;
+  try {
+    await gitCheckout(dir, branch);
+  } catch (err) {
+    flashGit(String(err).split("\n")[0]);
+    return;
+  }
+  flashGit(`⎇ ${branch}`);
+  refreshExplorer();
+  if (currentPath && !(await reloadFromDisk())) flashStatus("file not on this branch");
+}
+
 // --- command palette (⌘K) ---------------------------------------------------
+
+async function openBranchPalette(): Promise<void> {
+  const dir = repoDir();
+  if (!dir) return;
+  try {
+    const [branches, s] = await Promise.all([gitBranches(dir), gitStatus(dir)]);
+    const items: PaletteItem[] = branches
+      .filter((b) => b !== s.branch)
+      .map((b) => ({ label: b, run: () => void switchBranch(b) }));
+    openPalette(items, { placeholder: items.length ? "Switch branch…" : "No other branches" });
+  } catch (err) {
+    flashStatus(String(err).split("\n")[0]);
+  }
+}
 
 function openThemePalette(): void {
   const current = currentTheme();
@@ -492,7 +540,10 @@ function commandItems(): PaletteItem[] {
   if (!statusGitEl.hidden) {
     items.push(
       { label: "Git Commit…", hint: "⌘⇧C", run: () => beginCommit() },
-      { label: "Git Push", hint: "⌘⇧P", run: () => void pushRepo() }
+      { label: "Git Push", hint: "⌘⇧P", run: () => void pushRepo() },
+      { label: "Switch Git Branch…", run: () => void openBranchPalette() },
+      { label: "Show Git Diff", run: () => void showDiff(null) },
+      { label: "Diff Current File", run: () => void showDiff(currentPath) }
     );
   }
   return items;

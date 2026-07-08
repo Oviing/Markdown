@@ -432,6 +432,10 @@ body.typing #toolbar:hover,
   color: var(--syn-keyword);
 }
 
+#preview .hljs-deletion {
+  color: var(--syn-number);
+}
+
 #preview .hljs-string,
 #preview .hljs-regexp,
 #preview .hljs-addition {

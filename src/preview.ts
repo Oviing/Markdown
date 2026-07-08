@@ -39,3 +39,12 @@ export function renderPreview(el: HTMLElement, text: string): void {
   el.innerHTML = DOMPurify.sanitize(html);
   if (fm !== null && fm.trim() !== "") el.prepend(frontmatterTable(fm));
 }
+
+// raw diff text shown in the preview pane — highlighted directly, bypassing
+// marked (diff content would otherwise need fence-escaping)
+export function renderDiff(el: HTMLElement, diff: string): void {
+  const highlighted = hljs.highlight(diff, { language: "diff" }).value;
+  el.innerHTML = DOMPurify.sanitize(
+    `<pre><code class="hljs language-diff">${highlighted}</code></pre>`
+  );
+}

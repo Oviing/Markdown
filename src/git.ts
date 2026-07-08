@@ -19,3 +19,15 @@ export function gitCommit(dir: string, file: string | null, message: string): Pr
 export function gitPush(dir: string): Promise<string> {
   return invoke("git_push", { dir });
 }
+
+export function gitBranches(dir: string): Promise<string[]> {
+  return invoke("git_branches", { dir });
+}
+
+export function gitCheckout(dir: string, branch: string): Promise<void> {
+  return invoke("git_checkout", { dir, branch });
+}
+
+export function gitDiff(dir: string, file: string | null): Promise<string> {
+  return invoke("git_diff", { dir, file });
+}
