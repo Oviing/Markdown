@@ -68,10 +68,11 @@ jobs:
           make_latest: true
           body: |
             ### Install
-            Unzip and move **Spark.app** to `/Applications`, then run once in Terminal:
+            Paste this in Terminal — it installs (or updates) Spark into `/Applications` with no Gatekeeper dialogs:
             ```
-            xattr -dr com.apple.quarantine /Applications/Spark.app
+            curl -fsSL https://raw.githubusercontent.com/Oviing/Markdown/main/install.sh | bash
             ```
-            Spark isn't notarized (no paid Apple Developer account), so macOS
-            flags the download as "damaged" until you clear the quarantine
-            attribute with the command above. Then open Spark normally.
+            **Manual download instead?** Unzip, move **Spark.app** to `/Applications`, then either run
+            `xattr -dr com.apple.quarantine /Applications/Spark.app` once, or on the
+            "could not verify" dialog click **Done** → System Settings → Privacy & Security → **Open Anyway**.
+            (Spark isn't notarized — no paid Apple Developer account — so macOS warns on browser downloads.)
