@@ -43,6 +43,15 @@ jobs:
       - name: Build the app
         run: npm run tauri build
 
+      - name: Verify code signature
+        # The app is ad-hoc signed (tauri.conf.json → bundle.macOS.signingIdentity
+        # = "-"); fail the build if that signature is missing or broken so we never
+        # ship a bundle that Gatekeeper rejects as "damaged" after un-quarantine.
+        run: |
+          cd src-tauri/target/release/bundle/macos
+          codesign -dv --verbose=4 "Spark.app"
+          codesign --verify --deep --strict --verbose=2 "Spark.app"
+
       - name: Zip Spark.app
         env:
           V: ${{ steps.ver.outputs.version }}
@@ -57,3 +66,12 @@ jobs:
           name: Spark v${{ steps.ver.outputs.version }}
           files: Spark-${{ steps.ver.outputs.version }}.zip
           make_latest: true
+          body: |
+            ### Install
+            Unzip and move **Spark.app** to `/Applications`, then run once in Terminal:
+            ```
+            xattr -dr com.apple.quarantine /Applications/Spark.app
+            ```
+            Spark isn't notarized (no paid Apple Developer account), so macOS
+            flags the download as "damaged" until you clear the quarantine
+            attribute with the command above. Then open Spark normally.
