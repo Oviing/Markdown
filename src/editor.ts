@@ -61,9 +61,21 @@ const theme = EditorView.theme({
 });
 
 const langCompartment = new Compartment();
+const spellCompartment = new Compartment();
 
 function markdownExt() {
   return markdown({ base: markdownLanguage, codeLanguages: languages });
+}
+
+// native OS spellcheck — prose only, code files get none
+function spellcheckExt(enabled: boolean) {
+  return enabled
+    ? EditorView.contentAttributes.of({
+        spellcheck: "true",
+        autocorrect: "on",
+        autocapitalize: "on",
+      })
+    : [];
 }
 
 let langToken = 0;
@@ -71,15 +83,18 @@ let langToken = 0;
 // swap the editor language to match the file; last-requested wins if loads overlap
 export async function setLanguageFor(view: EditorView, fileName: string | null): Promise<void> {
   const token = ++langToken;
+  const md = isMarkdownFile(fileName);
   let lang;
-  if (isMarkdownFile(fileName)) {
+  if (md) {
     lang = markdownExt();
   } else {
     const desc = LanguageDescription.matchFilename(languages, fileName!);
     lang = desc ? await desc.load() : [];
   }
   if (token !== langToken) return;
-  view.dispatch({ effects: langCompartment.reconfigure(lang) });
+  view.dispatch({
+    effects: [langCompartment.reconfigure(lang), spellCompartment.reconfigure(spellcheckExt(md))],
+  });
 }
 
 export function createEditor(
@@ -96,6 +111,7 @@ export function createEditor(
         highlightSpecialChars(),
         EditorView.lineWrapping,
         langCompartment.of(markdownExt()),
+        spellCompartment.of(spellcheckExt(true)),
         syntaxHighlighting(mdHighlight),
         theme,
         placeholder("Start writing…"),
