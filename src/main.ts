@@ -1,6 +1,6 @@
 import { confirm } from "@tauri-apps/plugin-dialog";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { createEditor, getText, setText, setLanguageFor, toggleFocusMode } from "./editor";
+import { createEditor, getText, setText, setLanguageFor, setLanguageExplicit, languageList, toggleFocusMode } from "./editor";
 import { renderPreview, renderDiff, refreshPreviewTheme } from "./preview";
 import { openMarkdownFile, readMarkdownFile, readBinaryFile, saveMarkdown, saveTextAs, saveDocxAs, statMtime } from "./file";
 import { isMarkdownFile } from "./filetype";
@@ -20,6 +20,7 @@ import { initTheme, cycleTheme, currentTheme, setTheme, THEMES, type Theme } fro
 import { initSyncScroll, pushEditorScroll } from "./syncscroll";
 import { initPalette, openPalette, type PaletteItem } from "./palette";
 import { openSearchPanel } from "@codemirror/search";
+import { toggleComment } from "@codemirror/commands";
 import { EditorView } from "@codemirror/view";
 import {
   initExplorer,
@@ -546,6 +547,19 @@ function openHeadingPalette(): void {
   openPalette(items, { placeholder: items.length ? "Jump to heading…" : "No headings" });
 }
 
+function openLanguagePalette(): void {
+  const items: PaletteItem[] = [
+    { label: "Plain Text", run: () => void setLanguageExplicit(editor, null) },
+    ...[...languageList]
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map((desc) => ({
+        label: desc.name,
+        run: () => void setLanguageExplicit(editor, desc),
+      })),
+  ];
+  openPalette(items, { placeholder: "Set language…" });
+}
+
 function commandItems(): PaletteItem[] {
   const md = docIsMarkdown();
   const items: PaletteItem[] = [
@@ -560,6 +574,7 @@ function commandItems(): PaletteItem[] {
     { label: "Toggle Focus Mode", hint: "⌘⇧M", run: () => toggleAppFocusMode() },
     { label: "Toggle Explorer", hint: "⌘⇧E", run: () => toggleExplorerPanel() },
     { label: "Toggle Terminal", hint: "⌘J", run: () => void toggleTerminalPanel() },
+    { label: "Set Language…", run: openLanguagePalette },
     { label: "Switch Theme…", hint: "⌘⇧T cycles", run: openThemePalette },
   ];
   if (md) {
@@ -569,6 +584,8 @@ function commandItems(): PaletteItem[] {
       { label: "Insert Link", hint: "⌘⇧K", run: () => insertLink(editor) },
       { label: "Export to Word…", hint: "⌘E", run: () => void exportDocx() }
     );
+  } else {
+    items.push({ label: "Toggle Comment", hint: "⌘/", run: () => { toggleComment(editor); } });
   }
   if (!statusGitEl.hidden) {
     items.push(
@@ -640,7 +657,7 @@ window.addEventListener(
     else if (key === "o" && !e.shiftKey) void openDocument();
     else if (key === "s") void saveDocument(e.shiftKey);
     else if (key === "e" && !e.shiftKey) void exportDocx();
-    else if (key === "/") togglePreview();
+    else if (key === "/") { if (docIsMarkdown()) togglePreview(); else toggleComment(editor); }
     else if (key === "b" && !e.shiftKey) { if (docIsMarkdown()) toggleInline(editor, "**"); }
     else if (key === "i" && !e.shiftKey) { if (docIsMarkdown()) toggleInline(editor, "*"); }
     else if (key === "k" && !e.shiftKey) openCommandPalette();
