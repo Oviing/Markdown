@@ -23,6 +23,7 @@ npx tsx scripts/smoke-highlight.ts  # preview code-fence highlighting pipeline
 npx tsx scripts/smoke-frontmatter.ts # YAML frontmatter split/entries tests
 npx tsx scripts/smoke-image-meta.ts  # PNG/GIF/BMP/JPEG dimension-sniffing tests
 npx tsx scripts/smoke-fuzzy.ts       # palette fuzzy-matcher tests
+npx tsx scripts/smoke-math.ts        # GitHub-style $/$$ math tokenizer tests
 cd src-tauri && cargo test       # Rust tests (git porcelain-v2 + branch-list parsers)
 ```
 
@@ -62,10 +63,13 @@ needs Finder-automation permission).
 - `src/preview.ts` — marked (+ marked-highlight/hljs) → DOMPurify → `#preview`
   innerHTML (debounced in main.ts); hljs token colors map to `--syn-*` CSS vars.
   Strips YAML frontmatter (`src/frontmatter.ts`) into a dimmed metadata table;
-  a generation-counted async post-pass renders ` ```math ` (KaTeX) and
+  a generation-counted async post-pass renders math (KaTeX) and
   ` ```mermaid ` fences (both lazy chunks; mermaid runs `htmlLabels: false` so
   the strict SVG sanitize profile is lossless — keep it that way); `renderDiff`
-  shows raw git diffs via hljs, bypassing marked.
+  shows raw git diffs via hljs, bypassing marked. Math comes from ` ```math `
+  fences plus GitHub-style `$…$` / `` $`…`$ `` / `$$…$$` via `src/math.ts`, a
+  marked extension emitting inert `<code class="language-math…">` placeholders
+  (`export-docx.ts` emits their LaTeX source as code runs so exports keep them).
 - `src/syncscroll.ts` — proportional editor↔preview scroll mirroring with a
   rAF-released re-entrancy guard.
 - `src/file.ts` — open/save/save-as/export plus binary read (`readBinaryFile`)

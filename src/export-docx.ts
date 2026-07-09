@@ -105,6 +105,10 @@ function inlineRuns(tokens: Token[], style: RunStyle = {}, images: ImageMap = NO
       case "codespan":
         out.push(makeRun((tok as Tokens.Codespan).text, { ...style, code: true }));
         break;
+      // math renders via KaTeX only in the preview — export the LaTeX source as code
+      case "inlineMath":
+        out.push(makeRun((tok as Tokens.Generic).text, { ...style, code: true }));
+        break;
       case "link": {
         const link = tok as Tokens.Link;
         const inner = inlineRuns(link.tokens, style, images).filter(
@@ -267,6 +271,10 @@ function walkBlocks(tokens: Token[], ctx: BlockCtx, out: Block[]): void {
         listBlocks(tok as Tokens.List, ctx, out);
         break;
       case "code":
+        out.push(codeBlock(tok as Tokens.Code, ctx));
+        break;
+      // $$…$$ blocks render via KaTeX only in the preview — export the LaTeX source
+      case "blockMath":
         out.push(codeBlock(tok as Tokens.Code, ctx));
         break;
       case "table":
