@@ -4,19 +4,32 @@ import {
   placeholder,
   drawSelection,
   highlightSpecialChars,
+  lineNumbers,
+  highlightActiveLineGutter,
   ViewPlugin,
   Decoration,
   type DecorationSet,
   type ViewUpdate,
 } from "@codemirror/view";
-import { EditorState, Compartment } from "@codemirror/state";
-import { history, defaultKeymap, historyKeymap } from "@codemirror/commands";
+import { EditorState, Compartment, type Extension } from "@codemirror/state";
+import { history, defaultKeymap, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { search, searchKeymap, highlightSelectionMatches } from "@codemirror/search";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { languages } from "@codemirror/language-data";
-import { syntaxHighlighting, HighlightStyle, LanguageDescription } from "@codemirror/language";
+import {
+  syntaxHighlighting,
+  HighlightStyle,
+  LanguageDescription,
+  foldGutter,
+  bracketMatching,
+  indentOnInput,
+} from "@codemirror/language";
+import { closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
 import { tags as t } from "@lezer/highlight";
 import { isMarkdownFile } from "./filetype";
+
+// the language registry, exposed so the palette can offer a manual override
+export const languageList: readonly LanguageDescription[] = languages;
 
 const mdHighlight = HighlightStyle.define([
   { tag: t.heading1, fontSize: "1.5em", fontWeight: "700" },
@@ -45,24 +58,14 @@ const mdHighlight = HighlightStyle.define([
   { tag: [t.operator, t.punctuation], color: "var(--muted)" },
 ]);
 
-const theme = EditorView.theme({
+// shared chrome regardless of mode
+const baseTheme = EditorView.theme({
   "&": {
     height: "100%",
-    fontSize: "17px",
     backgroundColor: "transparent",
     color: "var(--fg)",
   },
   "&.cm-focused": { outline: "none" },
-  ".cm-scroller": {
-    fontFamily: "var(--sans)",
-    lineHeight: "1.7",
-  },
-  ".cm-content": {
-    maxWidth: "46rem",
-    margin: "0 auto",
-    padding: "3.5rem 2.5rem 40vh",
-    caretColor: "var(--fg)",
-  },
   ".cm-line": { padding: "0" },
   ".cm-cursor": { borderLeftColor: "var(--fg)", borderLeftWidth: "2px" },
   ".cm-selectionBackground, &.cm-focused .cm-selectionBackground": {
@@ -71,8 +74,54 @@ const theme = EditorView.theme({
   ".cm-placeholder": { color: "var(--muted)" },
 });
 
+// prose: a narrow, centered, sans-serif column tuned for writing
+const proseTheme = EditorView.theme({
+  "&": { fontSize: "17px" },
+  ".cm-scroller": { fontFamily: "var(--sans)", lineHeight: "1.7" },
+  ".cm-content": {
+    maxWidth: "46rem",
+    margin: "0 auto",
+    padding: "3.5rem 2.5rem 40vh",
+    caretColor: "var(--fg)",
+  },
+});
+
+// code: full-width monospace with a quiet gutter — no centering, no wrap
+const codeTheme = EditorView.theme({
+  "&": { fontSize: "13.5px" },
+  ".cm-scroller": { fontFamily: "var(--mono)", lineHeight: "1.55" },
+  ".cm-content": { padding: "1.25rem 0 40vh", caretColor: "var(--fg)" },
+  ".cm-gutters": {
+    backgroundColor: "transparent",
+    border: "none",
+    color: "var(--muted)",
+  },
+  ".cm-lineNumbers .cm-gutterElement": { padding: "0 0.75rem 0 1.25rem" },
+  ".cm-foldGutter .cm-gutterElement": { color: "var(--muted)" },
+  ".cm-activeLineGutter": { backgroundColor: "transparent", color: "var(--fg)" },
+  ".cm-matchingBracket": {
+    color: "var(--accent)",
+    backgroundColor: "transparent",
+    fontWeight: "700",
+  },
+});
+
+// standard code-editing affordances, applied only to non-prose documents
+const codeFeatures = [
+  lineNumbers(),
+  highlightActiveLineGutter(),
+  foldGutter(),
+  bracketMatching(),
+  closeBrackets(),
+  indentOnInput(),
+  keymap.of([...closeBracketsKeymap, indentWithTab]),
+];
+
 const langCompartment = new Compartment();
 const spellCompartment = new Compartment();
+const themeCompartment = new Compartment();
+const wrapCompartment = new Compartment();
+const codeCompartment = new Compartment();
 
 function markdownExt() {
   return markdown({ base: markdownLanguage, codeLanguages: languages });
@@ -151,6 +200,21 @@ export function toggleFocusMode(view: EditorView): boolean {
 
 let langToken = 0;
 
+// reconfigure language + every mode-dependent compartment in one dispatch. `md`
+// (prose) keeps the writing chrome; otherwise we get the mono code layout, a
+// gutter, bracket/indent helpers, and no line-wrap or spellcheck.
+function applyMode(view: EditorView, lang: Extension, md: boolean): void {
+  view.dispatch({
+    effects: [
+      langCompartment.reconfigure(lang),
+      spellCompartment.reconfigure(spellcheckExt(md)),
+      themeCompartment.reconfigure(md ? proseTheme : codeTheme),
+      wrapCompartment.reconfigure(md ? EditorView.lineWrapping : []),
+      codeCompartment.reconfigure(md ? [] : codeFeatures),
+    ],
+  });
+}
+
 // swap the editor language to match the file; last-requested wins if loads overlap
 export async function setLanguageFor(view: EditorView, fileName: string | null): Promise<void> {
   const token = ++langToken;
@@ -163,9 +227,20 @@ export async function setLanguageFor(view: EditorView, fileName: string | null):
     lang = desc ? await desc.load() : [];
   }
   if (token !== langToken) return;
-  view.dispatch({
-    effects: [langCompartment.reconfigure(lang), spellCompartment.reconfigure(spellcheckExt(md))],
-  });
+  applyMode(view, lang, md);
+}
+
+// manual language override from the palette (null = plain text). Bumps the same
+// token so an in-flight setLanguageFor load can't clobber the explicit choice.
+export async function setLanguageExplicit(
+  view: EditorView,
+  desc: LanguageDescription | null
+): Promise<void> {
+  const token = ++langToken;
+  const md = desc?.name === "Markdown";
+  const lang = md ? markdownExt() : desc ? await desc.load() : [];
+  if (token !== langToken) return;
+  applyMode(view, lang, md);
 }
 
 export function createEditor(
@@ -180,12 +255,14 @@ export function createEditor(
         history(),
         drawSelection(),
         highlightSpecialChars(),
-        EditorView.lineWrapping,
+        wrapCompartment.of(EditorView.lineWrapping),
         langCompartment.of(markdownExt()),
         spellCompartment.of(spellcheckExt(true)),
+        codeCompartment.of([]),
         focusCompartment.of([]),
         syntaxHighlighting(mdHighlight),
-        theme,
+        baseTheme,
+        themeCompartment.of(proseTheme),
         placeholder("Start writing…"),
         search({ top: true }),
         highlightSelectionMatches(),
