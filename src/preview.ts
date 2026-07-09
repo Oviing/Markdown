@@ -3,8 +3,10 @@ import { markedHighlight } from "marked-highlight";
 import hljs from "highlight.js/lib/common";
 import DOMPurify from "dompurify";
 import { splitFrontmatter, frontmatterEntries } from "./frontmatter";
+import { mathExtension } from "./math";
 
 marked.use({ gfm: true });
+marked.use(mathExtension);
 marked.use(
   markedHighlight({
     langPrefix: "hljs language-",
@@ -41,7 +43,7 @@ export function renderPreview(el: HTMLElement, text: string): void {
   void enhancePreview(el, ++renderGen);
 }
 
-// --- ```math (KaTeX) and ```mermaid fences ----------------------------------
+// --- math ($…$, $$…$$, ```math via KaTeX) and ```mermaid fences --------------
 // Enhancement is a fire-and-forget post-pass over the already-sanitized DOM.
 // Input is textContent (inert) and every generated fragment is re-sanitized
 // before insertion, so ordering stays XSS-safe. Both libraries are lazy
@@ -63,7 +65,9 @@ export function refreshPreviewTheme(el: HTMLElement, text: string): void {
 }
 
 async function enhancePreview(el: HTMLElement, gen: number): Promise<void> {
-  const blocks = el.querySelectorAll<HTMLElement>("code.language-math, code.language-mermaid");
+  const blocks = el.querySelectorAll<HTMLElement>(
+    "code.language-math, code.language-math-display, code.language-math-inline, code.language-mermaid"
+  );
   if (blocks.length === 0) return;
 
   const wantMermaid = [...blocks].some((b) => b.classList.contains("language-mermaid"));
@@ -88,15 +92,25 @@ async function enhancePreview(el: HTMLElement, gen: number): Promise<void> {
   let mermaidSeq = 0;
   for (const code of blocks) {
     const src = code.textContent ?? "";
-    const pre = code.parentElement;
-    if (!pre || gen !== renderGen) return;
-    if (code.classList.contains("language-math")) {
+    if (gen !== renderGen) return;
+    if (code.classList.contains("language-math") || code.classList.contains("language-math-display")) {
       const html = katex.renderToString(src, { throwOnError: false, displayMode: true });
       const div = document.createElement("div");
       div.className = "math-block";
       div.innerHTML = DOMPurify.sanitize(html);
-      pre.replaceWith(div);
+      // fenced/block math sits in a <pre> wrapper; mid-paragraph $$…$$ doesn't
+      const target = code.classList.contains("language-math") ? code.parentElement : code;
+      if (!target) continue;
+      target.replaceWith(div);
+    } else if (code.classList.contains("language-math-inline")) {
+      const html = katex.renderToString(src, { throwOnError: false, displayMode: false });
+      const span = document.createElement("span");
+      span.className = "math-inline";
+      span.innerHTML = DOMPurify.sanitize(html);
+      code.replaceWith(span);
     } else if (mermaid) {
+      const pre = code.parentElement;
+      if (!pre) continue;
       try {
         const { svg } = await mermaid.render(`mermaid-${gen}-${mermaidSeq++}`, src);
         if (gen !== renderGen) return;

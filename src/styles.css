@@ -538,6 +538,11 @@ body.typing #toolbar:hover,
   margin: 1em 0;
 }
 
+/* KaTeX's default 1.21em towers over body text when inline */
+#preview .math-inline .katex {
+  font-size: 1.05em;
+}
+
 #preview .mermaid-block {
   margin: 1em 0;
 }
