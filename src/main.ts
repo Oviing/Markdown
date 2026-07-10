@@ -32,6 +32,7 @@ import {
 } from "./explorer";
 
 const appWindow = getCurrentWindow();
+const appEl = document.querySelector<HTMLElement>("#app")!;
 const previewEl = document.querySelector<HTMLElement>("#preview")!;
 const statusFileEl = document.querySelector<HTMLElement>("#status-file")!;
 const statusWordsEl = document.querySelector<HTMLElement>("#status-words")!;
@@ -44,6 +45,7 @@ let previewTimer: ReturnType<typeof setTimeout> | undefined;
 
 const toolbarEl = document.querySelector<HTMLElement>("#toolbar")!;
 const previewBtn = toolbarEl.querySelector<HTMLButtonElement>('[data-action="preview"]')!;
+const previewOnlyBtn = toolbarEl.querySelector<HTMLButtonElement>('[data-action="preview-only"]')!;
 const terminalBtn = toolbarEl.querySelector<HTMLButtonElement>('[data-action="terminal"]')!;
 const themeBtn = toolbarEl.querySelector<HTMLButtonElement>('[data-action="theme"]')!;
 const explorerBtn = toolbarEl.querySelector<HTMLButtonElement>('[data-action="explorer"]')!;
@@ -130,11 +132,38 @@ function togglePreview(): void {
   if (previewEl.hidden && !docIsMarkdown()) return; // can always close, never open for code
   previewEl.hidden = !previewEl.hidden;
   previewBtn.setAttribute("aria-pressed", String(!previewEl.hidden));
+  if (previewEl.hidden) exitPreviewOnly(); // closing the preview always restores the editor
   if (!previewEl.hidden) {
     renderPreview(previewEl, getText(editor));
     pushEditorScroll(editor, previewEl);
   }
   editor.focus();
+}
+
+function exitPreviewOnly(): void {
+  appEl.classList.remove("preview-only");
+  previewOnlyBtn.setAttribute("aria-pressed", "false");
+}
+
+function togglePreviewOnly(): void {
+  if (!docIsMarkdown()) return;
+  const on = !appEl.classList.contains("preview-only");
+  if (on) {
+    if (previewEl.hidden) {
+      previewEl.hidden = false;
+      previewBtn.setAttribute("aria-pressed", "true");
+      renderPreview(previewEl, getText(editor));
+      pushEditorScroll(editor, previewEl);
+    }
+    appEl.classList.add("preview-only");
+    previewOnlyBtn.setAttribute("aria-pressed", "true");
+    previewEl.focus();
+    flashStatus("Preview only");
+  } else {
+    exitPreviewOnly();
+    editor.focus();
+    flashStatus("Split view");
+  }
 }
 
 function repoDir(): string | null {
@@ -581,6 +610,7 @@ function commandItems(): PaletteItem[] {
     items.push(
       { label: "Jump to Heading…", run: openHeadingPalette },
       { label: "Toggle Preview", hint: "⌘/", run: () => togglePreview() },
+      { label: "Preview Only", hint: "⌘⇧/", run: () => togglePreviewOnly() },
       { label: "Insert Link", hint: "⌘⇧K", run: () => insertLink(editor) },
       { label: "Export to Word…", hint: "⌘E", run: () => void exportDocx() }
     );
@@ -619,6 +649,7 @@ const toolbarActions: Record<string, () => void> = {
   save: () => void saveDocument(),
   export: () => void exportDocx(),
   preview: () => togglePreview(),
+  "preview-only": () => togglePreviewOnly(),
   terminal: () => void toggleTerminalPanel(),
   theme: () => cycleAppTheme(),
   explorer: () => toggleExplorerPanel(),
@@ -657,7 +688,11 @@ window.addEventListener(
     else if (key === "o" && !e.shiftKey) void openDocument();
     else if (key === "s") void saveDocument(e.shiftKey);
     else if (key === "e" && !e.shiftKey) void exportDocx();
-    else if (key === "/") { if (docIsMarkdown()) togglePreview(); else toggleComment(editor); }
+    else if (key === "/") {
+      if (!docIsMarkdown()) toggleComment(editor);
+      else if (e.shiftKey) togglePreviewOnly();
+      else togglePreview();
+    }
     else if (key === "b" && !e.shiftKey) { if (docIsMarkdown()) toggleInline(editor, "**"); }
     else if (key === "i" && !e.shiftKey) { if (docIsMarkdown()) toggleInline(editor, "*"); }
     else if (key === "k" && !e.shiftKey) openCommandPalette();

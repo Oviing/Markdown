@@ -388,6 +388,14 @@ body.typing #toolbar:hover,
   display: none;
 }
 
+#app.preview-only #editor {
+  display: none;
+}
+
+#preview:focus {
+  outline: none;
+}
+
 #preview > :first-child {
   margin-top: 0;
 }
